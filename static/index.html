@@ -480,10 +480,28 @@ body{
 <script>
 'use strict';
 
-let selectedFile   = null;
-let currentJobId   = null;
-let pollTimer      = null;
-let transcriptText = '';
+let selectedFile     = null;
+let currentJobId     = null;
+let pollTimer        = null;  // legacy fallback
+let progressWs       = null;  // WebSocket for real-time progress
+let transcriptText   = '';
+
+/* ── WebSocket progress labels ── */
+const STAGE_LABEL = {
+  queued:           'Queued…',
+  uploading:        'Uploading…',
+  extracting_audio: 'Extracting audio…',
+  transcribing:     'Transcribing speech…',
+  summarizing:      'Extracting AI insights…',
+  rag_indexing:     'Building vector index…',
+  done:             'Complete!',
+  failed:           'Failed',
+};
+const STAGE_PCT = {
+  queued: 5, uploading: 10, extracting_audio: 20,
+  transcribing: 60, summarizing: 80, rag_indexing: 92,
+  done: 100, failed: 100,
+};
 
 const uploadCard    = document.getElementById('uploadCard');
 const dropZone      = document.getElementById('dropZone');
@@ -600,26 +618,75 @@ uploadBtn.addEventListener('click', async () => {
     uploadBtn.disabled = false; progressWrap.classList.remove('show'); return;
   }
   currentJobId = jobId;
-  setProgress(35, 'Processing…', 'Upload complete');
-  pollTimer = setInterval(async () => {
-    try {
-      const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
-      const data = await res.json();
-      if (data.status === 'failed') {
-        clearInterval(pollTimer);
-        showError(data.error || 'Transcription failed.');
-        progressWrap.classList.remove('show'); uploadBtn.disabled = false; return;
+  setProgress(10, 'Queued — starting pipeline…', '');
+
+  /* ── Real-time progress via WebSocket ── */
+  function startProgressWs(jobId) {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/upload/progress/${encodeURIComponent(jobId)}`);
+    progressWs = ws;
+
+    ws.onmessage = async (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+
+      if (msg.type === 'heartbeat') return;
+
+      const pct   = STAGE_PCT[msg.type] ?? Math.max(10, msg.progress || 10);
+      const label = STAGE_LABEL[msg.type] || msg.message || msg.type;
+      setProgress(pct, label, msg.message && msg.message !== label ? msg.message : '');
+
+      if (msg.type === 'done') {
+        ws.close();
+        // Fetch final status (structured_data is too large for WS payload)
+        try {
+          const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
+          const data = await res.json();
+          await onDone(jobId, data);
+        } catch (e) {
+          showError('Could not load results: ' + e.message);
+        }
       }
-      const pct =
-        data.status === 'uploading'        ? 35 :
-        data.status === 'extracting_audio' ? 45 :
-        data.status === 'transcribing'     ? 45 + Math.round((data.progress/100)*40) :
-        data.status === 'summarizing'      ? 90 :
-        data.status === 'done'             ? 100 : 40;
-      setProgress(pct, STAGE[data.status] || data.status);
-      if (data.status === 'done') { clearInterval(pollTimer); await onDone(jobId, data); }
-    } catch { /* network blip */ }
-  }, 2500);
+
+      if (msg.type === 'failed') {
+        ws.close();
+        showError(msg.message || 'Processing failed.');
+        progressWrap.classList.remove('show');
+        uploadBtn.disabled = false;
+      }
+    };
+
+    ws.onerror = () => {
+      // Silently fall back to polling on WS failure
+      ws.close();
+      startPollingFallback(jobId);
+    };
+
+    ws.onclose = () => { progressWs = null; };
+  }
+
+  /* ── Polling fallback (when WebSocket is unavailable) ── */
+  function startPollingFallback(jobId) {
+    pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
+        const data = await res.json();
+        const pct  = STAGE_PCT[data.status] ?? Math.max(10, data.progress || 10);
+        setProgress(pct, STAGE_LABEL[data.status] || data.status);
+        if (data.status === 'failed') {
+          clearInterval(pollTimer);
+          showError(data.error || 'Processing failed.');
+          progressWrap.classList.remove('show'); uploadBtn.disabled = false;
+        }
+        if (data.status === 'done') {
+          clearInterval(pollTimer);
+          await onDone(jobId, data);
+        }
+      } catch { /* network blip — retry next tick */ }
+    }, 2500);
+  }
+
+  startProgressWs(jobId);
 });
 
 /* ═══════════════════════════════════════════════════════════
@@ -950,6 +1017,10 @@ function addBubble(type, text, thinking=false) {
 }
 
 newUploadBtn.addEventListener('click', () => {
+  // Close any open WebSocket progress stream
+  if (progressWs) { try { progressWs.close(); } catch {} progressWs = null; }
+  if (pollTimer)   { clearInterval(pollTimer); pollTimer = null; }
+
   if (currentJobId) {
     fetch(`/upload/${encodeURIComponent(currentJobId)}`,{method:'DELETE'}).catch(()=>{});
     currentJobId = null;
@@ -959,6 +1030,7 @@ newUploadBtn.addEventListener('click', () => {
   resultsPanel.classList.add('hidden');
   newUploadBtn.classList.add('hidden');
   progressWrap.classList.remove('show');
+  uploadBtn.disabled = false;
   window.scrollTo({top:0,behavior:'smooth'});
 });
 </script>

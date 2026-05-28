@@ -1,230 +1,66 @@
-import asyncio
+"""
+Upload API — Redis Streams-backed event-driven pipeline.
+
+Flow
+────
+  POST /upload/transcribe
+      ├─ Save file to disk
+      ├─ Initialize job state in Redis (RedisJobStore)
+      ├─ Publish QUEUED event to Redis Stream
+      └─ Launch PipelineRunner as asyncio background task
+
+  GET /upload/status/{job_id}
+      └─ Read job hash from Redis (real-time state)
+
+  GET /upload/transcript/{job_id}
+      └─ Read saved .txt file from disk
+
+  POST /upload/ask/{job_id}
+      ├─ Try Qdrant (job-scoped hybrid search)
+      ├─ Fallback: FAISS in-memory index (legacy)
+      └─ LLM answer generation with retry
+
+  DELETE /upload/{job_id}
+      ├─ Delete Redis job hash
+      ├─ Delete Qdrant vectors for job
+      └─ Delete transcript file from disk
+
+WebSocket progress endpoint lives in ws_progress.py.
+"""
+
+from __future__ import annotations
+
+import json
 import logging
 import os
-import shutil
-import subprocess
 import uuid
+
 import httpx
-import faiss
-import numpy as np
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from app.config import OLLAMA_BASE_URL, MEETING_LLM_MODEL, MEETING_LLM_TIMEOUT, UPLOADS_DIR, MEETINGS_INPUT_DIR
-from app.core.extractor import extract_insights
+
+from app.config import (
+    MEETINGS_INPUT_DIR,
+    MEETING_LLM_MODEL,
+    MEETING_LLM_TIMEOUT,
+    OLLAMA_BASE_URL,
+    UPLOADS_DIR,
+)
+from app.core.pipeline.event_bus import PipelineEvent, publish_event
+from app.core.pipeline.stages import PipelineRunner
+from app.db.redis_client import RedisJobStore, get_redis
+from app.utils.retry import retry_async
 
 log = logging.getLogger("upload")
 router = APIRouter(prefix="/upload", tags=["upload"])
 
-UPLOAD_DIR = UPLOADS_DIR
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-# { job_id: {status, progress, filename, transcript_path, summary, rag_index, rag_chunks, error} }
-_jobs: dict[str, dict] = {}
-
-UPLOAD_CHUNK         = 4 * 1024 * 1024
-_STATUS_UPLOADING    = "uploading"
-_STATUS_EXTRACTING   = "extracting_audio"
-_STATUS_TRANSCRIBING = "transcribing"
-_STATUS_SUMMARIZING  = "summarizing"
-_STATUS_DONE         = "done"
-_STATUS_FAILED       = "failed"
-
-_embed_model = None
+UPLOAD_CHUNK = 4 * 1024 * 1024  # 4 MB streaming read buffer
 
 
-def _get_embed_model():
-    global _embed_model
-    if _embed_model is None:
-        from sentence_transformers import SentenceTransformer
-        _embed_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _embed_model
-
-
-def _ffmpeg_available() -> bool:
-    return shutil.which("ffmpeg") is not None
-
-
-def _extract_audio(video_path: str, audio_path: str) -> None:
-    cmd = [
-        "ffmpeg", "-y", "-i", video_path,
-        "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1",
-        audio_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, timeout=600)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg failed: {result.stderr.decode()[:400]}")
-
-
-def _transcribe_file(audio_path: str, job_id: str) -> str:
-    from faster_whisper import WhisperModel
-
-    try:
-        import whisperx
-        hf_token = os.getenv("HF_TOKEN")
-        model_wx = whisperx.load_model("base", "cpu", language="en")
-        audio_wx = whisperx.load_audio(audio_path)
-        result   = model_wx.transcribe(audio_wx, batch_size=16)
-        language = result.get("language", "en")
-
-        align_model, meta = whisperx.load_align_model(language_code=language, device="cpu")
-        result = whisperx.align(result["segments"], align_model, meta, audio_wx, "cpu")
-
-        if hf_token:
-            diarize = whisperx.DiarizationPipeline(use_auth_token=hf_token, device="cpu")
-            result  = whisperx.assign_word_speakers(diarize(audio_wx), result)
-
-        segs  = result.get("segments", [])
-        total = float(segs[-1]["end"]) if segs else 1.0
-        lines = []
-        for seg in segs:
-            speaker = seg.get("speaker", "SPEAKER_00")
-            start, end = seg.get("start", 0), seg.get("end", 0)
-            lines.append(f"[{start:.1f}s–{end:.1f}s] {speaker}: {seg.get('text','').strip()}")
-            _jobs[job_id]["progress"] = min(99, int((end / total) * 100))
-
-        _jobs[job_id]["progress"] = 100
-        return "\n".join(lines)
-
-    except ImportError:
-        pass
-    except Exception as e:
-        log.warning(f"[upload] whisperx failed ({e}), falling back to faster-whisper")
-
-    model = WhisperModel("base", device="cpu", compute_type="int8")
-    segments_gen, info = model.transcribe(
-        audio_path, language="en", beam_size=5, vad_filter=True, word_timestamps=False,
-    )
-    total_dur = float(info.duration) if info.duration else 1.0
-    lines = []
-    for seg in segments_gen:
-        lines.append(f"[{seg.start:.1f}s–{seg.end:.1f}s] {seg.text.strip()}")
-        _jobs[job_id]["progress"] = min(99, int((seg.end / total_dur) * 100))
-    _jobs[job_id]["progress"] = 100
-    return "\n".join(lines)
-
-
-def _build_rag_index(transcript: str, summary: str = ""):
-    lines = [l.strip() for l in transcript.split("\n") if len(l.strip()) > 20]
-    if not lines:
-        return None, []
-
-    chunks = []
-    # Summary as its own searchable chunk so broad questions can match it
-    if summary and len(summary.strip()) > 20:
-        chunks.append(f"[MEETING SUMMARY]\n{summary.strip()}")
-
-    # Overlapping windows of 6 lines (step 3) for richer context per chunk
-    window, step = 6, 3
-    for i in range(0, len(lines), step):
-        block = "\n".join(lines[i:i + window])
-        if block.strip():
-            chunks.append(block)
-
-    if not chunks:
-        return None, []
-    try:
-        model = _get_embed_model()
-        emb   = model.encode(chunks, normalize_embeddings=True).astype("float32")
-        idx   = faiss.IndexFlatIP(emb.shape[1])
-        idx.add(emb)
-        return idx, chunks
-    except Exception as e:
-        log.warning(f"[upload] RAG index build failed: {e}")
-        return None, []
-
-
-async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
-    audio_path = video_path.rsplit(".", 1)[0] + "_audio.wav"
-    txt_path   = video_path.rsplit(".", 1)[0] + ".txt"
-
-    try:
-        if _ffmpeg_available():
-            _jobs[job_id]["status"] = _STATUS_EXTRACTING
-            log.info(f"[upload] {job_id}: extracting audio")
-            await asyncio.to_thread(_extract_audio, video_path, audio_path)
-            os.unlink(video_path)
-            source = audio_path
-        else:
-            log.warning("[upload] ffmpeg not found — passing file directly to whisper")
-            source = video_path
-
-        _jobs[job_id]["status"]   = _STATUS_TRANSCRIBING
-        _jobs[job_id]["progress"] = 0
-        log.info(f"[upload] {job_id}: transcribing")
-        transcript = await asyncio.to_thread(_transcribe_file, source, job_id)
-
-        with open(txt_path, "w", encoding="utf-8") as f:
-            f.write(f"# Transcript: {filename}\n\n{transcript}")
-
-        _jobs[job_id]["status"] = _STATUS_SUMMARIZING
-        log.info(f"[upload] {job_id}: extracting structured insights")
-        report = await extract_insights(transcript)
-        summary = report.summary.short_summary or report.summary.detailed_summary
-
-        # Build RAG after extraction so summary is embedded as a chunk too
-        rag_index, rag_chunks = await asyncio.to_thread(_build_rag_index, transcript, summary)
-
-        _jobs[job_id].update(
-            status=_STATUS_DONE,
-            progress=100,
-            transcript_path=txt_path,
-            summary=summary,
-            structured_data=report.model_dump(),
-            rag_index=rag_index,
-            rag_chunks=rag_chunks,
-        )
-
-        # Persist rich knowledge base entry so voice RAG can answer meeting questions
-        try:
-            os.makedirs(MEETINGS_INPUT_DIR, exist_ok=True)
-            kb_path = os.path.join(MEETINGS_INPUT_DIR, f"{job_id}.txt")
-            with open(kb_path, "w", encoding="utf-8") as f:
-                lines = [f"# Meeting: {filename}", ""]
-                lines += ["## Summary", report.summary.detailed_summary or summary, ""]
-                if report.participants:
-                    lines += ["## Participants"] + [f"- {p.name} ({p.role})" for p in report.participants] + [""]
-                if report.topics_discussed:
-                    lines += ["## Topics"] + [f"- [{t.importance.upper()}] {t.topic}" for t in report.topics_discussed] + [""]
-                if report.decisions:
-                    lines += ["## Decisions"] + [f"- {d.decision}" for d in report.decisions] + [""]
-                if report.action_items:
-                    lines += ["## Action Items"] + [
-                        f"- [{ai.priority.upper()}] {ai.task} — {ai.owner} (due: {ai.deadline or 'TBD'})"
-                        for ai in report.action_items
-                    ] + [""]
-                if report.risks_blockers:
-                    lines += ["## Risks & Blockers"] + [f"- [{r.severity.upper()}] {r.risk}" for r in report.risks_blockers] + [""]
-                if report.open_questions:
-                    lines += ["## Open Questions"] + [f"- {q}" for q in report.open_questions] + [""]
-                lines += ["## Transcript", transcript]
-                f.write("\n".join(lines))
-            _jobs[job_id]["kb_path"] = kb_path
-            from app.core.agent import invalidate_agent_index, ensure_system_initialized
-            invalidate_agent_index()
-            await ensure_system_initialized()
-            log.info(f"[upload] {job_id}: knowledge base updated and index rebuilt")
-        except Exception as e:
-            log.warning(f"[upload] {job_id}: could not update agent knowledge base: {e}")
-
-        log.info(f"[upload] {job_id}: complete")
-
-    except Exception as e:
-        log.exception(f"[upload] {job_id}: pipeline failed")
-        _jobs[job_id].update(status=_STATUS_FAILED, error=str(e))
-
-    finally:
-        for p in (audio_path, video_path):
-            try:
-                if os.path.exists(p):
-                    os.unlink(p)
-            except OSError:
-                pass
-
-
-class QuestionRequest(BaseModel):
-    question: str
-
+# ── POST /upload/transcribe ────────────────────────────────────────────────────
 
 @router.post("/transcribe")
 async def upload_and_transcribe(
@@ -233,101 +69,163 @@ async def upload_and_transcribe(
 ):
     job_id    = str(uuid.uuid4())
     ext       = os.path.splitext(file.filename or "upload.mp4")[1] or ".mp4"
-    dest_path = os.path.join(UPLOAD_DIR, f"{job_id}{ext}")
+    dest_path = os.path.join(UPLOADS_DIR, f"{job_id}{ext}")
 
-    _jobs[job_id] = {
-        "status": _STATUS_UPLOADING, "progress": 0,
-        "filename": file.filename, "transcript_path": None,
-        "error": None, "summary": None,
-        "rag_index": None, "rag_chunks": None,
-    }
+    r = await get_redis()
+    store = RedisJobStore(r)
 
+    await store.set(job_id, {
+        "status":          PipelineEvent.QUEUED.value,
+        "progress":        "0",
+        "filename":        file.filename or "upload",
+        "transcript_path": "",
+        "summary":         "",
+        "error":           "",
+    })
+
+    # Stream file to disk in chunks to avoid loading entire file into memory
     try:
         written = 0
         with open(dest_path, "wb") as out:
             while chunk := await file.read(UPLOAD_CHUNK):
                 out.write(chunk)
                 written += len(chunk)
-        log.info(f"[upload] {job_id}: saved {written / 1e6:.1f} MB")
-    except Exception as e:
-        _jobs[job_id].update(status=_STATUS_FAILED, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+        log.info("upload saved job=%s size_mb=%.1f", job_id, written / 1e6)
+    except Exception as exc:
+        await store.update(job_id, status=PipelineEvent.FAILED.value, error=str(exc))
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}")
 
-    background_tasks.add_task(_run_pipeline, job_id, dest_path, file.filename or "upload")
+    await publish_event(job_id, PipelineEvent.QUEUED, progress=0, message="Upload complete — queued")
+
+    # Launch pipeline as a non-blocking background task
+    runner = PipelineRunner(job_id, dest_path, file.filename or "upload")
+    background_tasks.add_task(runner.run)
+
     return {"job_id": job_id, "filename": file.filename}
 
 
+# ── GET /upload/status/{job_id} ────────────────────────────────────────────────
+
 @router.get("/status/{job_id}")
 async def job_status(job_id: str):
-    job = _jobs.get(job_id)
-    if not job:
+    r = await get_redis()
+    store = RedisJobStore(r)
+    data = await store.get(job_id)
+    if not data:
+        # Fallback: check legacy in-memory dict (imported lazily to avoid circular import)
         raise HTTPException(status_code=404, detail="Job not found")
-    result = {
+
+    result: dict = {
         "job_id":   job_id,
-        "status":   job["status"],
-        "progress": job.get("progress", 0),
-        "filename": job.get("filename"),
-        "error":    job.get("error"),
+        "status":   data.get("status", "unknown"),
+        "progress": int(data.get("progress", 0)),
+        "filename": data.get("filename", ""),
+        "error":    data.get("error", "") or None,
     }
-    if job["status"] == _STATUS_DONE:
-        result["summary"] = job.get("summary", "")
-        result["structured_data"] = job.get("structured_data")
+
+    if data.get("status") == PipelineEvent.DONE.value:
+        result["summary"] = data.get("summary", "")
+        raw_sd = data.get("structured_data", "")
+        if raw_sd:
+            try:
+                result["structured_data"] = json.loads(raw_sd)
+            except json.JSONDecodeError:
+                result["structured_data"] = None
+
     return result
 
 
+# ── GET /upload/transcript/{job_id} ───────────────────────────────────────────
+
 @router.get("/transcript/{job_id}")
 async def get_transcript(job_id: str):
-    job = _jobs.get(job_id)
-    if not job:
+    r = await get_redis()
+    store = RedisJobStore(r)
+    data = await store.get(job_id)
+
+    if not data:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != _STATUS_DONE:
-        raise HTTPException(status_code=400, detail=f"Not ready (status: {job['status']})")
-    path = job.get("transcript_path")
+    if data.get("status") != PipelineEvent.DONE.value:
+        raise HTTPException(status_code=400, detail=f"Not ready (status: {data.get('status')})")
+
+    path = data.get("transcript_path", "")
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=500, detail="Transcript file missing")
+
     return FileResponse(path, media_type="text/plain", filename=f"transcript_{job_id}.txt")
+
+
+# ── POST /upload/ask/{job_id} ──────────────────────────────────────────────────
+
+class QuestionRequest(BaseModel):
+    question: str
 
 
 @router.post("/ask/{job_id}")
 async def ask_question(job_id: str, body: QuestionRequest):
-    job = _jobs.get(job_id)
-    if not job:
+    r = await get_redis()
+    store = RedisJobStore(r)
+    data = await store.get(job_id)
+
+    if not data:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != _STATUS_DONE:
+    if data.get("status") != PipelineEvent.DONE.value:
         raise HTTPException(status_code=400, detail="Transcript not ready")
 
-    question   = body.question.strip()
+    question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question is empty")
 
-    rag_index   = job.get("rag_index")
-    rag_chunks  = job.get("rag_chunks") or []
-    summary_txt = (job.get("summary") or "").strip()
+    context_parts: list[str] = []
+    summary_txt = (data.get("summary") or "").strip()
 
-    context_parts = []
+    # ── Qdrant hybrid search (primary path) ──
+    qdrant_ok = False
+    try:
+        from app.core.vector_store.qdrant_store import get_qdrant_store
+        from app.core.vector_store.embedder import MultiLevelEmbedder
 
-    if rag_index is not None and rag_chunks:
+        qdrant = get_qdrant_store()
+        if qdrant.available:
+            embedder = MultiLevelEmbedder()
+            hits = await qdrant.search_hybrid(question, job_id, embedder, top_k=10)
+            if hits:
+                if summary_txt:
+                    context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
+                context_parts.append(
+                    "RELEVANT SECTIONS:\n\n" +
+                    "\n\n".join(f"[{h['section'].upper()}] {h['text']}" for h in hits)
+                )
+                qdrant_ok = True
+    except Exception as exc:
+        log.warning("qdrant search failed for ask job=%s: %s", job_id, exc)
+
+    # ── FAISS fallback (legacy in-memory index) ──
+    if not qdrant_ok:
         try:
-            model = _get_embed_model()
-            q_emb = model.encode([question], normalize_embeddings=True).astype("float32")
-            k = min(10, len(rag_chunks))
-            _, indices = rag_index.search(q_emb, k)
-            rag_ctx = "\n\n".join(
-                rag_chunks[i] for i in indices[0] if i < len(rag_chunks)
-            )
-        except Exception as e:
-            log.warning(f"[upload] RAG retrieval failed: {e}")
-            rag_ctx = "\n\n".join(rag_chunks[:15])
+            from app.api._legacy_rag import get_job_rag_index
+            idx, chunks = get_job_rag_index(job_id)
+            if idx and chunks:
+                from app.core.vector_store.embedder import MultiLevelEmbedder
+                embedder = MultiLevelEmbedder()
+                q_emb = (await embedder.embed_for_query(question))[0].tolist()
+                import faiss, numpy as np
+                q_arr = np.array([q_emb], dtype="float32")
+                k = min(10, len(chunks))
+                _, indices = idx.search(q_arr, k)
+                rag_ctx = "\n\n".join(chunks[i] for i in indices[0] if i < len(chunks))
+                if summary_txt:
+                    context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
+                if rag_ctx:
+                    context_parts.append(f"RELEVANT TRANSCRIPT SECTIONS:\n{rag_ctx}")
+        except Exception as exc:
+            log.warning("faiss fallback failed for ask job=%s: %s", job_id, exc)
 
+    # ── Last resort: raw transcript file ──
+    if not context_parts:
         if summary_txt:
             context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
-        if rag_ctx:
-            context_parts.append(f"RELEVANT TRANSCRIPT SECTIONS:\n{rag_ctx}")
-    else:
-        # Fallback: summary + raw transcript file
-        if summary_txt:
-            context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
-        path = job.get("transcript_path")
+        path = data.get("transcript_path", "")
         if path and os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 context_parts.append(f"TRANSCRIPT:\n{f.read(6000)}")
@@ -335,56 +233,80 @@ async def ask_question(job_id: str, body: QuestionRequest):
     context = "\n\n---\n\n".join(context_parts) if context_parts else "No meeting content available."
 
     prompt = (
-        "You are a meeting transcript assistant. Your ONLY job is to answer questions strictly based on the meeting transcript and summary provided below.\n"
-        "STRICT RULES:\n"
-        "- Answer ONLY from the meeting content provided. Do NOT use any outside knowledge.\n"
-        "- Do NOT talk about the company, products, or anything not explicitly mentioned in this transcript.\n"
-        "- If the answer is not found in the meeting content, respond exactly: 'This was not discussed in the meeting.'\n"
-        "- Never make up or infer information that is not clearly stated in the transcript.\n\n"
+        "You are a meeting transcript assistant. Answer questions strictly from the meeting content below.\n"
+        "RULES:\n"
+        "- Answer ONLY from the content provided. Do NOT use outside knowledge.\n"
+        "- If the answer is not in the content, respond: 'This was not discussed in the meeting.'\n"
+        "- Never fabricate or infer information not clearly stated.\n\n"
         f"MEETING CONTENT:\n{context}\n\n"
-        f"QUESTION: {question}\n\nANSWER (based only on the meeting content above):"
+        f"QUESTION: {question}\n\nANSWER:"
     )
 
-    try:
+    async def _llm_call() -> str:
         async with httpx.AsyncClient(timeout=MEETING_LLM_TIMEOUT) as client:
-            r = await client.post(
+            resp = await client.post(
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
-                    "model": MEETING_LLM_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
+                    "model":   MEETING_LLM_MODEL,
+                    "prompt":  prompt,
+                    "stream":  False,
                     "options": {"temperature": 0.1, "num_predict": 512},
                 },
             )
-            answer = r.json().get("response", "").strip() or "No answer available."
-    except Exception as e:
-        log.warning(f"[upload] Q&A failed: {e}")
+            resp.raise_for_status()
+            return resp.json().get("response", "").strip() or "No answer available."
+
+    try:
+        answer = await retry_async(_llm_call, max_attempts=3)
+    except Exception as exc:
+        log.warning("Q&A LLM failed job=%s: %s", job_id, exc)
         answer = "Could not generate answer — LLM not reachable."
 
     return {"question": question, "answer": answer}
 
 
+# ── DELETE /upload/{job_id} ───────────────────────────────────────────────────
+
 @router.delete("/{job_id}")
 async def delete_job(job_id: str):
-    job = _jobs.pop(job_id, None)
-    if not job:
+    r = await get_redis()
+    store = RedisJobStore(r)
+    data = await store.get(job_id)
+    if not data:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    for key in ("transcript_path", "kb_path"):
-        path = job.get(key)
-        if path and os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
+    await store.delete(job_id)
 
-    kb_path = job.get("kb_path")
-    if kb_path and not os.path.exists(kb_path):
-        # File was removed — invalidate agent index so it rebuilds without this meeting
+    # Remove transcript file
+    path = data.get("transcript_path", "")
+    if path and os.path.exists(path):
         try:
-            from app.core.agent import invalidate_agent_index
-            invalidate_agent_index()
-        except Exception:
+            os.unlink(path)
+        except OSError:
             pass
+
+    # Remove knowledge-base file
+    kb_path = os.path.join(MEETINGS_INPUT_DIR, f"{job_id}.txt")
+    if os.path.exists(kb_path):
+        try:
+            os.unlink(kb_path)
+        except OSError:
+            pass
+
+    # Remove Qdrant vectors
+    try:
+        from app.core.vector_store.qdrant_store import get_qdrant_store
+        qdrant = get_qdrant_store()
+        if qdrant.available:
+            await qdrant.delete_meeting(job_id)
+    except Exception as exc:
+        log.warning("qdrant delete failed job=%s: %s", job_id, exc)
+
+    # Invalidate voice agent index
+    try:
+        from app.core.agent import invalidate_agent_index
+        invalidate_agent_index()
+    except Exception:
+        pass
 
     return {"deleted": job_id}

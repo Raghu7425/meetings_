@@ -174,7 +174,7 @@ ADMIN_EMAIL   = os.getenv("ADMIN_EMAIL", "admin@technodysis.com")
 # Ollama (meeting pipeline uses same base URL)
 OLLAMA_BASE_URL    = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MEETING_LLM_MODEL  = os.getenv("MEETING_LLM_MODEL", "llama3.2:3b")
-MEETING_LLM_TIMEOUT = int(os.getenv("MEETING_LLM_TIMEOUT", "120"))
+MEETING_LLM_TIMEOUT = int(os.getenv("MEETING_LLM_TIMEOUT", "600"))
 
 # Jira (optional)
 JIRA_ENABLED     = os.getenv("JIRA_ENABLED", "false").lower() == "true"
@@ -190,4 +190,65 @@ TEMPLATES_DIR = os.path.join(_BASE, "templates")
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 WHISPER_DEVICE     = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "en")
+
+
+# ── Redis ──────────────────────────────────────────────────────────────────────
+REDIS_URL             = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "20"))
+REDIS_SOCKET_TIMEOUT  = int(os.getenv("REDIS_SOCKET_TIMEOUT", "5"))
+
+# Redis key prefixes
+REDIS_JOB_PREFIX        = "job:"
+REDIS_SESSION_PREFIX    = "session:"
+REDIS_SUMMARY_PREFIX    = "summary:"
+REDIS_STREAM_PIPELINE   = "stream:pipeline"
+REDIS_STREAM_JOBS       = "stream:jobs"
+
+# Redis TTLs (seconds)
+REDIS_JOB_TTL           = int(os.getenv("REDIS_JOB_TTL", "86400"))     # 24 h
+REDIS_SESSION_TTL       = int(os.getenv("REDIS_SESSION_TTL", "3600"))   # 1 h
+REDIS_CACHE_TTL         = int(os.getenv("REDIS_CACHE_TTL", "1800"))     # 30 min
+REDIS_SUMMARY_TTL       = int(os.getenv("REDIS_SUMMARY_TTL", "604800")) # 7 days
+
+# Pipeline worker config
+PIPELINE_WORKER_COUNT   = int(os.getenv("PIPELINE_WORKER_COUNT", "2"))
+PIPELINE_STREAM_MAXLEN  = int(os.getenv("PIPELINE_STREAM_MAXLEN", "1000"))
+PIPELINE_CONSUMER_GROUP = os.getenv("PIPELINE_CONSUMER_GROUP", "pipeline_workers")
+PIPELINE_CONSUMER_NAME  = os.getenv("PIPELINE_CONSUMER_NAME", "worker_1")
+PIPELINE_BLOCK_MS       = int(os.getenv("PIPELINE_BLOCK_MS", "5000"))
+
+
+# ── Qdrant ─────────────────────────────────────────────────────────────────────
+QDRANT_HOST            = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT            = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_GRPC_PORT       = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
+QDRANT_API_KEY         = os.getenv("QDRANT_API_KEY", "")
+QDRANT_PREFER_GRPC     = os.getenv("QDRANT_PREFER_GRPC", "false").lower() == "true"
+
+# Qdrant collection names
+QDRANT_COL_RAW         = os.getenv("QDRANT_COL_RAW", "meetings_raw")
+QDRANT_COL_SEMANTIC    = os.getenv("QDRANT_COL_SEMANTIC", "meetings_semantic")
+QDRANT_COL_SUMMARY     = os.getenv("QDRANT_COL_SUMMARY", "meetings_summaries")
+
+# Vector dimensions
+EMBED_DIM_SMALL        = int(os.getenv("EMBED_DIM_SMALL", "384"))   # all-MiniLM-L6-v2
+EMBED_DIM_LARGE        = int(os.getenv("EMBED_DIM_LARGE", "768"))   # all-mpnet-base-v2
+
+# Embedding models
+EMBED_MODEL_FAST       = os.getenv("EMBED_MODEL_FAST", "all-MiniLM-L6-v2")
+EMBED_MODEL_QUALITY    = os.getenv("EMBED_MODEL_QUALITY", "all-mpnet-base-v2")
+
+# Semantic chunking
+CHUNK_OVERLAP_SENTENCES = int(os.getenv("CHUNK_OVERLAP_SENTENCES", "2"))
+CHUNK_MAX_SENTENCES     = int(os.getenv("CHUNK_MAX_SENTENCES", "8"))
+CHUNK_MIN_CHARS         = int(os.getenv("CHUNK_MIN_CHARS", "80"))
+
+# Incremental summarizer
+SUMMARIZER_CHUNK_LINES  = int(os.getenv("SUMMARIZER_CHUNK_LINES", "30"))
+SUMMARIZER_MAX_TOKENS   = int(os.getenv("SUMMARIZER_MAX_TOKENS", "512"))
+
+# Retry config for LLM calls
+LLM_RETRY_MAX_ATTEMPTS  = int(os.getenv("LLM_RETRY_MAX_ATTEMPTS", "4"))
+LLM_RETRY_MIN_WAIT      = float(os.getenv("LLM_RETRY_MIN_WAIT", "1.0"))
+LLM_RETRY_MAX_WAIT      = float(os.getenv("LLM_RETRY_MAX_WAIT", "30.0"))
 

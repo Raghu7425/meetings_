@@ -1,35 +1,55 @@
 """
-Main file that starts the Voice Agent application.
+FastAPI application entry point.
 
-- Creates FastAPI server and sets up logging
-- Loads API routes and WebSocket connection
-- Serves frontend files
+Startup sequence:
+  1. Configure structured JSON logging
+  2. Connect Redis (required for job state + pipeline events)
+  3. TTS health probe (non-fatal)
+  4. Preload STT / Agent / Speaker models (non-fatal)
+  5. Ensure Qdrant collections exist (non-fatal)
+  6. Run Alembic migrations (non-fatal)
+  7. Initialise PostgreSQL tables (non-fatal)
+  8. Ensure MinIO bucket exists (non-fatal)
+  9. Start APScheduler (non-fatal)
 
-- At startup:
-  • checks if TTS is working
-  • loads STT, Agent, and Speaker models
-
-- Makes sure everything is ready before users connect
-
-This file starts and prepares the whole system to run.
+Shutdown:
+  - APScheduler stop
+  - Redis connection pool close
 """
-
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import asyncio
 import logging
-from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
+from warnings import filterwarnings
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+filterwarnings("ignore")
+
+# ── Structured logging (must be first) ────────────────────────────────────────
+from app.utils.logging_config import configure_logging
+configure_logging()
+
+from app.config import (
+    APP_TITLE,
+    APP_VERSION,
+    STATIC_DIR,
+)
 from app.api.routes import router as rest_router
 from app.api.upload import router as upload_router
-from app.config import STATIC_DIR, LOGS_DIR, LOG_FILE, LOG_MAX_BYTES, LOG_BACKUP_COUNT, APP_VERSION, APP_TITLE
+from app.api.ws_progress import router as ws_progress_router
+from app.db.redis_client import close_redis, get_redis, ping_redis
 
-# ── Optional: voice assistant (needs full requirements.txt) ───────────────────
+log = logging.getLogger("main")
+
+
+# ── Optional feature guards ────────────────────────────────────────────────────
+
 try:
     from app.api.websocket import router as ws_router
     from app.core.tts import synthesize_chunks, get_engine_name, get_edge_voice
@@ -40,13 +60,11 @@ try:
 except ImportError as _e:
     ws_router = None
     _VOICE_AVAILABLE = False
-    import logging as _log
-    _log.getLogger("main").warning(
+    logging.getLogger("main").warning(
         "Voice assistant disabled (missing packages: %s). "
-        "Video upload + transcription still fully available.", _e
+        "Video upload + transcription fully available.", _e,
     )
 
-# ── Optional: Teams meeting pipeline (needs DB + full requirements) ───────────
 try:
     from app.api.webhook import router as webhook_router
     from app.api.meetings import router as meetings_router, action_router
@@ -57,149 +75,137 @@ try:
 except ImportError:
     webhook_router = meetings_router = action_router = None
     _MEETING_PIPELINE_AVAILABLE = False
-from warnings import filterwarnings
 
 
-filterwarnings("ignore")
+# ── Startup helpers ────────────────────────────────────────────────────────────
 
-
-def _run_alembic_upgrade():
-    """Run 'alembic upgrade head' in a thread at startup — safe to call repeatedly."""
+def _run_alembic_upgrade() -> None:
     from alembic.config import Config
     from alembic import command
     cfg = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
-    cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "alembic"))
+    cfg.set_main_option(
+        "script_location",
+        os.path.join(os.path.dirname(__file__), "alembic"),
+    )
     command.upgrade(cfg, "head")
 
-# Logging setup
-os.makedirs(LOGS_DIR, exist_ok=True)
 
-# Suppress noisy third-party loggers
-logging.getLogger("speechbrain").setLevel(logging.WARNING)
-logging.getLogger("speechbrain.utils.fetching").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-
-_fmt = logging.Formatter(
-    fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-
-_console = logging.StreamHandler()
-_console.setFormatter(_fmt)
-
-_file = RotatingFileHandler(
-    LOG_FILE,
-    maxBytes=LOG_MAX_BYTES,
-    backupCount=LOG_BACKUP_COUNT,
-    encoding="utf-8",
-)
-_file.setFormatter(_fmt)
-
-logging.getLogger().setLevel(logging.INFO)
-logging.getLogger().addHandler(_console)
-logging.getLogger().addHandler(_file)
-
-log = logging.getLogger("voice-agent")
-
-
-
-async def _probe_tts():
+async def _probe_tts() -> None:
     if not _VOICE_AVAILABLE:
         return
-    log.info(f"[TTS] startup probe — voice={get_edge_voice()!r}")
+    log.info("TTS startup probe voice=%r", get_edge_voice())
     try:
         data = await synthesize_chunks("Hello.")
-        if data:
-            log.info(f"[TTS] OK — engine={get_engine_name()} {len(data)}B")
-        else:
-            log.warning("[TTS] 0 bytes returned — voice responses may not work")
-    except Exception as e:
-        log.warning(f"[TTS] Startup probe failed (non-fatal): {e}")
+        log.info("TTS OK engine=%s bytes=%d", get_engine_name(), len(data) if data else 0)
+    except Exception as exc:
+        log.warning("TTS probe failed (non-fatal): %s", exc)
 
 
-async def _preload_core_models():
+async def _preload_models() -> None:
     if not _VOICE_AVAILABLE:
-        log.info("[startup] Slim mode — skipping voice assistant model preload")
+        log.info("slim mode — skipping voice model preload")
         return
-
-    log.info("[startup] Preloading STT, Agent, and Speaker models...")
-
-    stt_result, agent_result, speaker_result = await asyncio.gather(
+    log.info("preloading STT / Agent / Speaker models…")
+    stt, agent, speaker = await asyncio.gather(
         asyncio.to_thread(get_model),
         ensure_system_initialized(),
         asyncio.to_thread(get_classifier),
         return_exceptions=True,
     )
-
-    if isinstance(stt_result, Exception):
-        raise RuntimeError(f"STT preload failed: {stt_result}")
-    log.info("[startup] STT ready")
-
-    if isinstance(agent_result, Exception):
-        log.warning("[startup] Ollama unavailable — voice assistant disabled (%s)", agent_result)
+    if isinstance(stt, Exception):
+        raise RuntimeError(f"STT preload failed: {stt}")
+    log.info("STT ready")
+    if isinstance(agent, Exception):
+        log.warning("Ollama unavailable — voice disabled: %s", agent)
     else:
-        log.info("[startup] Agent/RAG/Ollama ready")
-
-    if isinstance(speaker_result, Exception):
-        log.warning("[startup] Speaker model not loaded (non-fatal): %s", speaker_result)
+        log.info("Agent/RAG/Ollama ready")
+    if isinstance(speaker, Exception):
+        log.warning("Speaker model not loaded (non-fatal): %s", speaker)
     else:
-        log.info("[startup] Speaker model ready")
+        log.info("Speaker model ready")
 
 
+async def _ensure_qdrant_collections() -> None:
+    try:
+        from app.core.vector_store.qdrant_store import QdrantMeetingStore
+        store = QdrantMeetingStore()
+        if store.available:
+            await asyncio.to_thread(store.ensure_collections)
+            log.info("Qdrant collections ensured")
+        else:
+            log.warning("Qdrant not reachable — vector store disabled")
+    except Exception as exc:
+        log.warning("Qdrant setup failed (non-fatal): %s", exc)
 
-# Lifespan manager for startup/shutdown events
+
+async def _preload_embedders() -> None:
+    try:
+        from app.core.vector_store.embedder import MultiLevelEmbedder
+        await asyncio.to_thread(MultiLevelEmbedder.preload)
+        log.info("embedding models preloaded")
+    except Exception as exc:
+        log.warning("embedder preload failed (non-fatal): %s", exc)
+
+
+# ── Lifespan ───────────────────────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log.info("=== %s v%s starting up ===", APP_TITLE, APP_VERSION)
 
-    log.info("[startup] Voice agent starting up...")
+    # Redis — required
+    if not await ping_redis():
+        log.warning("Redis not reachable — job state and pipeline events will be degraded")
+    else:
+        log.info("Redis connected")
 
+    # Non-fatal parallel startup tasks
+    await asyncio.gather(
+        _probe_tts(),
+        _ensure_qdrant_collections(),
+        _preload_embedders(),
+        return_exceptions=True,
+    )
+
+    # Model preload (can raise — will propagate as warning)
     try:
-        await _probe_tts()
-    except Exception as e:
-        log.warning("[startup] TTS probe failed (non-fatal — voice responses disabled): %s", e)
+        await _preload_models()
+    except Exception as exc:
+        log.warning("model preload warning: %s", exc)
 
-    try:
-        await _preload_core_models()
-        log.info("[startup] Core models ready")
-    except Exception as e:
-        log.exception("[startup] Fatal startup error: %s", e)
-        raise
-
-    # Optional: Teams meeting pipeline (DB + MinIO + scheduler)
+    # Teams meeting pipeline (DB + MinIO + scheduler)
     if _MEETING_PIPELINE_AVAILABLE:
-        try:
-            await asyncio.to_thread(_run_alembic_upgrade)
-            log.info("[startup] Alembic migrations applied")
-        except Exception as e:
-            log.warning("[startup] Alembic warning (non-fatal): %s", e)
-
-        try:
-            await init_db()
-            log.info("[startup] Database tables ensured")
-        except Exception as e:
-            log.warning("[startup] DB init warning (non-fatal): %s", e)
-
-        try:
-            await ensure_bucket()
-            log.info("[startup] MinIO bucket ensured")
-        except Exception as e:
-            log.warning("[startup] MinIO warning (non-fatal): %s", e)
-
+        for label, coro in [
+            ("Alembic",    asyncio.to_thread(_run_alembic_upgrade)),
+            ("DB tables",  init_db()),
+            ("MinIO",      ensure_bucket()),
+        ]:
+            try:
+                await coro
+                log.info("%s ready", label)
+            except Exception as exc:
+                log.warning("%s warning (non-fatal): %s", label, exc)
         try:
             start_scheduler()
-        except Exception as e:
-            log.warning("[startup] Scheduler warning (non-fatal): %s", e)
+        except Exception as exc:
+            log.warning("Scheduler warning (non-fatal): %s", exc)
 
+    log.info("=== startup complete ===")
     yield
 
-    log.info("[shutdown] Shutting down...")
+    # ── Shutdown ───────────────────────────────────────────────────────────────
+    log.info("shutting down…")
     if _MEETING_PIPELINE_AVAILABLE:
-        stop_scheduler()
+        try:
+            stop_scheduler()
+        except Exception:
+            pass
+    await close_redis()
+    log.info("shutdown complete")
 
 
+# ── App ────────────────────────────────────────────────────────────────────────
 
-# FastAPI app initialization with CORS and routes
 app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
@@ -210,23 +216,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for frontend
 try:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-except RuntimeError as e:
-    log.error(f"[startup] Could not mount /static: {e}")
+except RuntimeError as exc:
+    log.error("could not mount /static: %s", exc)
 
-# Core routes (always available)
+# Always-available routes
 app.include_router(rest_router)
 app.include_router(upload_router)
+app.include_router(ws_progress_router)
 
-# Voice assistant routes (only when full packages are installed)
+# Voice assistant routes
 if _VOICE_AVAILABLE and ws_router:
     app.include_router(ws_router)
 
-# Teams meeting pipeline routes (only when DB/full packages are installed)
+# Teams meeting pipeline routes
 if _MEETING_PIPELINE_AVAILABLE:
     app.include_router(webhook_router)
     app.include_router(meetings_router)
     app.include_router(action_router)
-
