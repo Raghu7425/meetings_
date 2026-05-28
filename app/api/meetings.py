@@ -10,7 +10,7 @@ from app.db.database import get_db
 from app.db.models import Meeting, ActionItem
 from app.core.storage import download_file
 from app.core.notifier import send_summary_email
-from app.core.extractor import MeetingReport, ActionItemSchema
+from app.core.extractor import report_from_db
 import tempfile
 import os
 
@@ -85,6 +85,7 @@ async def get_meeting(meeting_id: str, db: AsyncSession = Depends(get_db)):
         "open_questions":    meeting.open_questions,
         "status":            meeting.status,
         "audio_path":        meeting.audio_path,
+        "structured_data":   meeting.structured_data,
         "action_items": [
             {
                 "id":             str(ai.id),
@@ -138,21 +139,22 @@ async def resend_email(
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
 
-    report = MeetingReport(
-        summary=meeting.summary or "",
-        decisions=meeting.decisions or [],
-        action_items=[
-            ActionItemSchema(
-                task=ai.task,
-                owner=ai.owner or "Unassigned",
-                deadline=str(ai.deadline) if ai.deadline else None,
-                priority=ai.priority or "medium",
-            )
+    report = report_from_db(
+        summary_text=meeting.summary or "",
+        decisions_list=meeting.decisions or [],
+        action_items_data=[
+            {
+                "task":     ai.task,
+                "owner":    ai.owner or "Unassigned",
+                "deadline": str(ai.deadline) if ai.deadline else None,
+                "priority": ai.priority or "medium",
+            }
             for ai in meeting.action_items
         ],
         open_questions=meeting.open_questions or [],
         duration_minutes=meeting.duration_minutes,
         participant_count=meeting.participant_count,
+        structured_data=meeting.structured_data,
     )
 
     recipients = to or []

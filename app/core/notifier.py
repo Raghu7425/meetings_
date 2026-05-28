@@ -25,12 +25,15 @@ def _render_html(meeting_title: str, report: MeetingReport, meeting_date: str) -
     return template.render(
         meeting_title=meeting_title,
         meeting_date=meeting_date,
-        summary=report.summary,
-        decisions=report.decisions,
+        summary=report.summary.detailed_summary or report.summary.short_summary,
+        decisions=[d.decision for d in report.decisions],
         action_items=[a.model_dump() for a in report.action_items],
         open_questions=report.open_questions,
         duration_minutes=report.duration_minutes,
         participant_count=report.participant_count,
+        risks_blockers=[r.model_dump() for r in report.risks_blockers],
+        participants=[p.model_dump() for p in report.participants],
+        sentiment=report.sentiment.model_dump(),
     )
 
 
@@ -41,14 +44,21 @@ def _render_plain(meeting_title: str, report: MeetingReport, meeting_date: str) 
         "",
         "SUMMARY",
         "-------",
-        report.summary,
+        report.summary.detailed_summary or report.summary.short_summary,
         "",
     ]
+
+    if report.participants:
+        lines += ["PARTICIPANTS", "------------"]
+        for p in report.participants:
+            lines.append(f"• {p.name}" + (f" ({p.role})" if p.role != "Unknown" else ""))
+        lines.append("")
 
     if report.decisions:
         lines += ["DECISIONS", "---------"]
         for d in report.decisions:
-            lines.append(f"• {d}")
+            conf = f" [confidence: {d.confidence:.0%}]" if d.confidence < 0.9 else ""
+            lines.append(f"• {d.decision}{conf}")
         lines.append("")
 
     if report.action_items:
@@ -56,6 +66,12 @@ def _render_plain(meeting_title: str, report: MeetingReport, meeting_date: str) 
         for a in report.action_items:
             deadline = a.deadline or "No deadline"
             lines.append(f"• [{a.priority.upper()}] {a.task} — {a.owner} (due: {deadline})")
+        lines.append("")
+
+    if report.risks_blockers:
+        lines += ["RISKS & BLOCKERS", "----------------"]
+        for r in report.risks_blockers:
+            lines.append(f"• [{r.severity.upper()}] {r.risk}")
         lines.append("")
 
     if report.open_questions:

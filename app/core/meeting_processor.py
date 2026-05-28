@@ -129,15 +129,16 @@ async def process_meeting(call_id: str) -> None:
                 update(Meeting)
                 .where(Meeting.call_id == call_id)
                 .values(
-                    title=title,
+                    title=report.meeting_metadata.meeting_title or title,
                     date=dt,
                     duration_minutes=report.duration_minutes,
                     participant_count=report.participant_count or len(attendees),
-                    summary=report.summary,
-                    decisions=report.decisions,
+                    summary=report.summary.short_summary,
+                    decisions=[d.decision for d in report.decisions],
                     open_questions=report.open_questions,
                     audio_path=audio_object if audio_minio_url else None,
                     transcript_path=txt_object or None,
+                    structured_data=report.model_dump(),
                     status="done",
                 )
             )

@@ -11,6 +11,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from app.config import OLLAMA_BASE_URL, MEETING_LLM_MODEL, MEETING_LLM_TIMEOUT, UPLOADS_DIR, MEETINGS_INPUT_DIR
+from app.core.extractor import extract_insights
 
 log = logging.getLogger("upload")
 router = APIRouter(prefix="/upload", tags=["upload"])
@@ -133,29 +134,6 @@ def _build_rag_index(transcript: str, summary: str = ""):
         return None, []
 
 
-async def _generate_summary(transcript: str) -> str:
-    prompt = (
-        "You are a meeting assistant. Summarize this meeting transcript concisely.\n"
-        "Include: key topics discussed, decisions made, and action items.\n\n"
-        f"TRANSCRIPT:\n{transcript[:6000]}\n\nSUMMARY:"
-    )
-    try:
-        async with httpx.AsyncClient(timeout=MEETING_LLM_TIMEOUT) as client:
-            r = await client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={
-                    "model": MEETING_LLM_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 512},
-                },
-            )
-            return r.json().get("response", "").strip() or "Summary unavailable."
-    except Exception as e:
-        log.warning(f"[upload] Summary generation failed: {e}")
-        return "Summary unavailable — LLM not reachable."
-
-
 async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
     audio_path = video_path.rsplit(".", 1)[0] + "_audio.wav"
     txt_path   = video_path.rsplit(".", 1)[0] + ".txt"
@@ -180,10 +158,11 @@ async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
             f.write(f"# Transcript: {filename}\n\n{transcript}")
 
         _jobs[job_id]["status"] = _STATUS_SUMMARIZING
-        log.info(f"[upload] {job_id}: generating summary")
-        summary = await _generate_summary(transcript)
+        log.info(f"[upload] {job_id}: extracting structured insights")
+        report = await extract_insights(transcript)
+        summary = report.summary.short_summary or report.summary.detailed_summary
 
-        # Build RAG after summary so summary is embedded as a chunk too
+        # Build RAG after extraction so summary is embedded as a chunk too
         rag_index, rag_chunks = await asyncio.to_thread(_build_rag_index, transcript, summary)
 
         _jobs[job_id].update(
@@ -191,21 +170,40 @@ async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
             progress=100,
             transcript_path=txt_path,
             summary=summary,
+            structured_data=report.model_dump(),
             rag_index=rag_index,
             rag_chunks=rag_chunks,
         )
 
-        # Persist transcript + summary to knowledge base so voice chat can answer meeting questions
+        # Persist rich knowledge base entry so voice RAG can answer meeting questions
         try:
             os.makedirs(MEETINGS_INPUT_DIR, exist_ok=True)
             kb_path = os.path.join(MEETINGS_INPUT_DIR, f"{job_id}.txt")
             with open(kb_path, "w", encoding="utf-8") as f:
-                f.write(f"# Meeting: {filename}\n\n## Summary\n{summary}\n\n## Transcript\n{transcript}")
+                lines = [f"# Meeting: {filename}", ""]
+                lines += ["## Summary", report.summary.detailed_summary or summary, ""]
+                if report.participants:
+                    lines += ["## Participants"] + [f"- {p.name} ({p.role})" for p in report.participants] + [""]
+                if report.topics_discussed:
+                    lines += ["## Topics"] + [f"- [{t.importance.upper()}] {t.topic}" for t in report.topics_discussed] + [""]
+                if report.decisions:
+                    lines += ["## Decisions"] + [f"- {d.decision}" for d in report.decisions] + [""]
+                if report.action_items:
+                    lines += ["## Action Items"] + [
+                        f"- [{ai.priority.upper()}] {ai.task} — {ai.owner} (due: {ai.deadline or 'TBD'})"
+                        for ai in report.action_items
+                    ] + [""]
+                if report.risks_blockers:
+                    lines += ["## Risks & Blockers"] + [f"- [{r.severity.upper()}] {r.risk}" for r in report.risks_blockers] + [""]
+                if report.open_questions:
+                    lines += ["## Open Questions"] + [f"- {q}" for q in report.open_questions] + [""]
+                lines += ["## Transcript", transcript]
+                f.write("\n".join(lines))
             _jobs[job_id]["kb_path"] = kb_path
             from app.core.agent import invalidate_agent_index, ensure_system_initialized
             invalidate_agent_index()
             await ensure_system_initialized()
-            log.info(f"[upload] {job_id}: transcript added to agent knowledge base and index rebuilt")
+            log.info(f"[upload] {job_id}: knowledge base updated and index rebuilt")
         except Exception as e:
             log.warning(f"[upload] {job_id}: could not update agent knowledge base: {e}")
 
@@ -273,6 +271,7 @@ async def job_status(job_id: str):
     }
     if job["status"] == _STATUS_DONE:
         result["summary"] = job.get("summary", "")
+        result["structured_data"] = job.get("structured_data")
     return result
 
 

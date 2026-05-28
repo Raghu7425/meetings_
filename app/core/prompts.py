@@ -11,34 +11,85 @@ and prevent off-topic or unstructured responses.
 
 
 
-MEETING_EXTRACTION_PROMPT = """You are an expert meeting analyst. Analyze the following meeting transcript and extract structured information.
+MEETING_EXTRACTION_PROMPT = """You are a meeting intelligence system. Analyze the transcript and return ONLY valid JSON — no markdown, no explanation, no text outside the JSON object.
 
-Return ONLY valid JSON (no markdown, no explanation, no code fences) matching this exact schema:
+Return a JSON object matching this exact structure:
 {{
-  "summary": "<3-5 sentence executive summary of the meeting>",
-  "decisions": ["<decision 1>", "<decision 2>"],
-  "action_items": [
-    {{
-      "task": "<clear task description>",
-      "owner": "<person responsible, or 'Unassigned'>",
-      "deadline": "<YYYY-MM-DD or null>",
-      "priority": "<high|medium|low>"
-    }}
+  "meeting_metadata": {{
+    "meeting_title": "<inferred title or 'Untitled Meeting'>",
+    "duration_minutes": <integer or null>,
+    "platform": "<Teams|Zoom|Google Meet|Phone|Unknown>",
+    "language": "en",
+    "transcript_confidence": <0.0-1.0>
+  }},
+  "summary": {{
+    "short_summary": "<1-2 sentence summary>",
+    "detailed_summary": "<4-6 sentence summary covering all key topics, decisions, and outcomes>"
+  }},
+  "participants": [
+    {{"name": "<name or SPEAKER_XX>", "role": "<inferred role or 'Unknown'>", "speaker_id": "<SPEAKER_XX or name>"}}
   ],
-  "open_questions": ["<question 1>", "<question 2>"],
-  "duration_minutes": <integer or null>,
-  "participant_count": <integer or null>
+  "topics_discussed": [
+    {{"topic": "<topic>", "importance": "<high|medium|low>", "time_range": "<MM:SS-MM:SS or null>"}}
+  ],
+  "decisions": [
+    {{"decision": "<decision made>", "reason": "<reason or null>", "approved_by": ["<name>"], "confidence": <0.0-1.0>, "evidence": "<direct quote max 100 chars>"}}
+  ],
+  "action_items": [
+    {{"task_id": "ACT-<n>", "task": "<task>", "owner": "<name or 'Unassigned'>", "deadline": "<YYYY-MM-DD or null>", "priority": "<high|medium|low>", "status": "pending", "dependencies": [], "confidence": <0.0-1.0>, "evidence": "<direct quote max 100 chars>"}}
+  ],
+  "followups": [
+    {{"type": "<email|call|meeting|document>", "owner": "<name>", "action": "<what to do>", "target_person": "<recipient>", "deadline": "<YYYY-MM-DD or null>"}}
+  ],
+  "reminders": [
+    {{"title": "<title>", "date_time": "<ISO datetime or null>", "notify_before_minutes": 60, "related_to": "<topic>"}}
+  ],
+  "risks_blockers": [
+    {{"risk": "<risk>", "severity": "<high|medium|low>", "owner": "<name or team>", "reason": "<root cause>"}}
+  ],
+  "sentiment": {{
+    "overall_sentiment": "<positive|neutral|negative>",
+    "stress_level": "<high|medium|low>",
+    "engagement_score": <0.0-1.0>
+  }},
+  "timeline": [
+    {{"time": "<MM:SS - MM:SS>", "topic": "<what was discussed>"}}
+  ],
+  "quotes": [
+    {{"speaker": "<name>", "quote": "<important direct quote>"}}
+  ],
+  "metrics": {{
+    "total_action_items": <int>,
+    "total_decisions": <int>,
+    "blocked_tasks": <int>,
+    "high_priority_tasks": <int>
+  }},
+  "next_meeting": {{
+    "date": "<YYYY-MM-DD or null>",
+    "agenda": ["<agenda item>"]
+  }},
+  "open_questions": ["<unanswered question>"],
+  "tags": ["<relevant tag>"],
+  "raw_extracted_entities": {{
+    "people": ["<name>"],
+    "projects": ["<project>"],
+    "technologies": ["<technology>"],
+    "clients": ["<client or company>"]
+  }}
 }}
 
 Rules:
-- Infer deadlines from context (e.g. "by end of week", "next Tuesday") and convert to ISO date if possible; otherwise null.
-- If no decisions/action_items/open_questions exist, use empty arrays.
-- Do NOT wrap the JSON in markdown code fences or add any text outside the JSON object.
+- STRICT JSON ONLY — no markdown fences, no text before or after
+- Use null for unknown values, [] for none found
+- confidence: 0.9+ explicit statement, 0.7-0.89 implied, below 0.7 uncertain
+- evidence = direct transcript quote (max 100 chars)
+- Convert relative deadlines ("by Friday", "next week") to YYYY-MM-DD
+- metrics counts must match actual array lengths
 
 Transcript:
 {transcript}
 
-JSON output:"""
+JSON:"""
 
 
 SYSTEM_PROMPT = """You are a meeting assistant that answers questions based on meeting transcripts and summaries.

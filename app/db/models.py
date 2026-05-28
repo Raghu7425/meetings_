@@ -21,6 +21,7 @@ class Meeting(Base):
     transcript_path: Mapped[str] = mapped_column(String(1024), nullable=True)
     audio_path: Mapped[str] = mapped_column(String(1024), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="processing")
+    structured_data: Mapped[dict] = mapped_column(JSONB, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     action_items: Mapped[list["ActionItem"]] = relationship("ActionItem", back_populates="meeting", cascade="all, delete-orphan")
