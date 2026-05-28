@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Technodysis — Voice Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#060a12;--surface:#0c1220;--surface2:#101828;
+  --border:#1a2540;--border2:#223060;
+  --accent:#4f7ef8;--glow:rgba(79,126,248,.15);
+  --accent2:#d946a8;--teal:#14b8a6;--amber:#f59e0b;
+  --rose:#f43f5e;--violet:#8b5cf6;--orange:#f97316;--green:#10b981;
+  --text:#e1e8f5;--mid:#8899bb;--dim:#3d506e;
+  --font:'Inter',sans-serif;--brand:'Syne',sans-serif;
+  --r:14px;--rs:8px;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--font);
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;padding:0 16px 60px;overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── Ambient glow ── */
+.bg-glow{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.bg-glow::before{
+  content:'';position:absolute;width:900px;height:900px;border-radius:50%;
+  top:-300px;left:50%;transform:translateX(-50%);
+  background:radial-gradient(circle,rgba(79,126,248,.055) 0%,transparent 60%);
+  transition:background 1.4s ease;
+}
+body.s-speaking   .bg-glow::before{background:radial-gradient(circle,rgba(139,92,246,.09) 0%,transparent 60%)}
+body.s-listening  .bg-glow::before{background:radial-gradient(circle,rgba(244,63,94,.07) 0%,transparent 60%)}
+body.s-interrupted .bg-glow::before{background:radial-gradient(circle,rgba(249,115,22,.08) 0%,transparent 60%)}
+
+/* ── Header ── */
+.hdr{
+  width:100%;max-width:760px;display:flex;align-items:center;
+  justify-content:space-between;padding:18px 0 14px;
+  border-bottom:1px solid var(--border);margin-bottom:28px;
+  position:relative;z-index:2;
+}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;font-size:17px;
+  box-shadow:0 0 20px rgba(79,126,248,.3);}
+.bname{font-family:var(--brand);font-size:1.1rem;font-weight:800;
+  background:linear-gradient(135deg,#7ca4ff,var(--accent2));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;line-height:1;}
+.bsub{font-size:.6rem;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* Voice select */
+.voice-sel{
+  background:var(--surface);border:1px solid var(--border2);border-radius:6px;
+  padding:4px 8px;color:var(--mid);font-family:var(--font);
+  font-size:.65rem;cursor:pointer;outline:none;
+}
+.voice-sel:focus{border-color:var(--accent)}
+.voice-sel option{background:var(--surface2);color:var(--text)}
+
+.badge{
+  font-size:.6rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 9px;border-radius:10px;
+  background:rgba(79,126,248,.12);color:var(--accent);border:1px solid rgba(79,126,248,.25);
+}
+
+/* ── Status pill ── */
+.spill{display:flex;align-items:center;gap:7px;background:var(--surface);
+  border:1px solid var(--border);border-radius:20px;padding:5px 12px 5px 9px;
+  font-size:.65rem;font-weight:500;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mid);transition:all .3s;white-space:nowrap;}
+.sdot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;transition:background .3s}
+body.s-idle        .sdot{background:var(--green)}
+body.s-listening   .sdot{background:var(--rose);animation:blink .65s infinite}
+body.s-thinking    .sdot{background:var(--amber);animation:blink 1.1s infinite}
+body.s-speaking    .sdot{background:var(--violet);animation:blink .85s infinite}
+body.s-interrupted .sdot{background:var(--orange);animation:blink .35s infinite}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+
+/* ── Main layout ── */
+.main{width:100%;max-width:760px;display:flex;flex-direction:column;align-items:center;gap:24px;position:relative;z-index:1}
+
+/* ── Orb ── */
+.orb-sec{display:flex;flex-direction:column;align-items:center;gap:20px}
+.orb-wrap{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
+.wave-cv{position:absolute;top:0;left:0;width:190px;height:190px;border-radius:50%}
+.orb{
+  width:88px;height:88px;border-radius:50%;
+  background:radial-gradient(circle at 36% 36%,#6390ff,#1a3aaa);
+  box-shadow:0 0 36px rgba(79,126,248,.4),0 0 80px rgba(79,126,248,.1),inset 0 1px 0 rgba(255,255,255,.12);
+  position:relative;z-index:2;transition:background .7s,box-shadow .7s,transform .08s;
+}
+body.s-speaking   .orb{background:radial-gradient(circle at 36% 36%,#b07fff,#4a1db5);box-shadow:0 0 46px rgba(139,92,246,.55),0 0 100px rgba(139,92,246,.15),inset 0 1px 0 rgba(255,255,255,.12)}
+body.s-listening  .orb{background:radial-gradient(circle at 36% 36%,#ff7998,#8b1234);box-shadow:0 0 42px rgba(244,63,94,.5),0 0 90px rgba(244,63,94,.12),inset 0 1px 0 rgba(255,255,255,.12)}
+body.s-thinking   .orb{background:radial-gradient(circle at 36% 36%,#fcd34d,#92400e);box-shadow:0 0 40px rgba(245,158,11,.45),0 0 80px rgba(245,158,11,.1),inset 0 1px 0 rgba(255,255,255,.12);animation:othink 1.6s ease-in-out infinite}
+body.s-interrupted .orb{background:radial-gradient(circle at 36% 36%,#ff924d,#7c2d12);box-shadow:0 0 46px rgba(249,115,22,.55),0 0 100px rgba(249,115,22,.15),inset 0 1px 0 rgba(255,255,255,.12);animation:oflash .32s ease 3}
+@keyframes othink{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.93);opacity:.82}}
+@keyframes oflash{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
+
+/* ── Controls ── */
+.ctrls{display:flex;gap:9px;flex-wrap:wrap;justify-content:center}
+.btn{
+  background:var(--surface);border:1px solid var(--border2);border-radius:var(--rs);
+  padding:10px 22px;color:var(--mid);font-family:var(--font);font-size:.76rem;
+  font-weight:500;letter-spacing:.04em;cursor:pointer;transition:all .2s;white-space:nowrap;outline:none;
+}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--glow)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn-start{background:linear-gradient(135deg,#4f7ef8,#2d52c4);border-color:transparent;color:#fff;font-weight:600;box-shadow:0 4px 18px rgba(79,126,248,.3)}
+.btn-start:hover{background:linear-gradient(135deg,#6891ff,#4f7ef8);border-color:transparent;color:#fff}
+.btn-start.active{background:linear-gradient(135deg,var(--rose),#8b0e25);border-color:transparent;color:#fff;box-shadow:0 4px 18px rgba(244,63,94,.3)}
+.btn-int{display:none;border-color:rgba(249,115,22,.35);color:var(--orange)}
+.btn-int:hover{background:rgba(249,115,22,.1);border-color:var(--orange)}
+.btn-int.show{display:block}
+.btn-rst{border-color:var(--border);color:var(--dim)}
+.btn-rst:hover{border-color:var(--teal);color:var(--teal);background:rgba(20,184,166,.08)}
+
+/* ── Panels ── */
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
+@media(max-width:520px){.panels{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;min-height:110px;display:flex;flex-direction:column;gap:9px}
+.panel-u{border-top:2px solid var(--rose)}
+.panel-a{border-top:2px solid var(--violet)}
+.phd{display:flex;align-items:center;gap:8px}
+.pico{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.panel-u .pico{background:rgba(244,63,94,.12)}
+.panel-a .pico{background:rgba(139,92,246,.12)}
+.plbl{font-size:.61rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.ptxt{font-size:.84rem;line-height:1.7;color:var(--text);word-break:break-word;flex:1;min-height:40px}
+.ptxt.empty{color:var(--dim);font-style:italic;font-size:.78rem}
+.dots{display:none;gap:5px;align-items:center}
+.dots.show{display:flex}
+.dots span{width:5px;height:5px;border-radius:50%;background:var(--violet);animation:bounce 1.1s ease infinite}
+.dots span:nth-child(2){animation-delay:.18s}
+.dots span:nth-child(3){animation-delay:.36s}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+/* ── Memory bar ── */
+.mem-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.mcard{background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:11px 14px;text-align:center}
+.mval{font-size:.95rem;font-weight:600;color:var(--accent);line-height:1;margin-bottom:4px;text-transform:capitalize;transition:color .4s}
+.mlbl{font-size:.58rem;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.en{color:var(--accent)}.eh{color:var(--green)}.ee{color:#fde047}
+.es{color:var(--teal)}.ea{color:var(--rose)}.ec{color:var(--amber)}.ef{color:var(--orange)}
+
+/* ── Latency bar ── */
+.lat-bar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%}
+.lat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;text-align:center}
+.lat-val{font-size:.88rem;font-weight:600;color:var(--teal);line-height:1;margin-bottom:4px;font-variant-numeric:tabular-nums}
+.lat-lbl{font-size:.58rem;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+
+/* ── TTS error banner ── */
+.tts-err{
+  display:none;width:100%;background:rgba(244,63,94,.08);
+  border:1px solid rgba(244,63,94,.3);border-radius:var(--rs);
+  padding:11px 15px;font-size:.75rem;color:#fca5a5;line-height:1.6;
+}
+.tts-err.show{display:block}
+
+/* ── Conversation history panel ── */
+.hist-toggle{
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  padding:4px 14px;color:var(--dim);font-family:var(--font);
+  font-size:.61rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .2s;
+}
+.hist-toggle:hover{color:var(--mid);border-color:var(--border2)}
+.hist-panel{display:none;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.hist-panel.open{display:block}
+.hist-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.hist-title{font-size:.61rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
+.hist-actions{display:flex;gap:8px;align-items:center}
+.hist-btn{background:transparent;border:none;color:var(--dim);font-family:var(--font);font-size:.61rem;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+.hist-btn:hover{color:var(--mid)}
+.hist-log{height:200px;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:7px}
+.hist-log::-webkit-scrollbar{width:3px}
+.hist-log::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.hist-turn{padding:7px 10px;border-radius:7px;font-size:.78rem;line-height:1.55}
+.hist-turn.user{background:rgba(244,63,94,.07);border-left:2px solid var(--rose)}
+.hist-turn.asst{background:rgba(139,92,246,.07);border-left:2px solid var(--violet)}
+.hist-role{font-size:.6rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin-bottom:2px}
+.hist-turn.user .hist-role{color:var(--rose)}
+.hist-turn.asst .hist-role{color:var(--violet)}
+.hist-ts{font-size:.58rem;color:var(--dim);float:right}
+.hist-empty{color:var(--dim);font-style:italic;font-size:.78rem;text-align:center;padding:20px 0}
+
+/* ── Debug panel ── */
+.dbtn{
+  background:transparent;border:1px solid var(--border);border-radius:6px;
+  padding:4px 14px;color:var(--dim);font-family:var(--font);
+  font-size:.61rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .2s;
+}
+.dbtn:hover{color:var(--mid);border-color:var(--border2)}
+.dpanel{display:none;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.dpanel.open{display:block}
+.dhd{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.dtitle{font-size:.61rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.dclr{background:transparent;border:none;color:var(--dim);font-family:var(--font);font-size:.61rem;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+.dclr:hover{color:var(--mid)}
+.dlog{height:220px;overflow-y:auto;padding:7px 14px;font-size:.65rem;font-family:'Courier New',monospace;line-height:1.78}
+.dlog::-webkit-scrollbar{width:3px}
+.dlog::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.drow{display:flex;gap:9px;padding:1px 0}
+.dt{color:var(--dim);flex-shrink:0;width:60px}
+.dtag{flex-shrink:0;width:78px;font-weight:600}
+.dmsg{color:var(--text);flex:1;word-break:break-word}
+.ts{color:#a78bfa}.tw{color:var(--accent)}.tv{color:var(--amber)}
+.tt{color:var(--accent2)}.ti{color:var(--orange);font-weight:700}
+.te{color:var(--rose)}.tn{color:var(--dim)}.tk{color:var(--teal)}.tm{color:var(--green)}.tb{color:#c084fc}
+
+/* ── Backchannel / toast ── */
+.bct{
+  position:fixed;top:76px;right:18px;
+  background:var(--surface2);border:1px solid rgba(139,92,246,.35);
+  border-radius:var(--rs);padding:7px 14px;
+  font-size:.78rem;color:var(--violet);font-style:italic;
+  opacity:0;transform:translateX(16px);transition:all .3s;z-index:50;pointer-events:none;
+}
+.bct.show{opacity:1;transform:translateX(0)}
+.toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(60px);
+  background:var(--surface2);border:1px solid var(--border2);border-radius:var(--rs);
+  padding:9px 20px;font-size:.76rem;color:var(--text);
+  transition:transform .3s,opacity .3s;opacity:0;z-index:100;pointer-events:none;white-space:nowrap;
+}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.hint{font-size:.66rem;color:var(--dim);text-align:center;line-height:1.7;letter-spacing:.03em;max-width:460px}
+.hint kbd{font-family:var(--font);font-size:.6rem;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;color:var(--mid)}
+
+/* ── Toggles row ── */
+.toggles{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+
+/* ── Upload panel ── */
+.upload-section{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.upload-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.upload-title{font-size:.61rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
+.upload-body{padding:16px}
+.upload-drop{
+  border:2px dashed var(--border2);border-radius:var(--rs);padding:28px 16px;
+  text-align:center;cursor:pointer;transition:border-color .2s,background .2s;
+  position:relative;
+}
+.upload-drop:hover,.upload-drop.drag{border-color:var(--teal);background:rgba(20,184,166,.04)}
+.upload-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-drop-icon{font-size:1.8rem;margin-bottom:8px}
+.upload-drop-hint{font-size:.76rem;color:var(--mid);line-height:1.7}
+.upload-drop-hint b{color:var(--teal)}
+.upload-drop-hint small{display:block;font-size:.64rem;color:var(--dim);margin-top:4px}
+.upload-file-info{display:none;align-items:center;gap:10px;margin-top:12px;padding:9px 12px;
+  background:rgba(20,184,166,.07);border:1px solid rgba(20,184,166,.2);border-radius:var(--rs)}
+.upload-file-info.show{display:flex}
+.upload-fname{font-size:.75rem;color:var(--teal);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upload-fsize{font-size:.65rem;color:var(--dim);flex-shrink:0}
+.upload-clear{background:none;border:none;color:var(--dim);cursor:pointer;font-size:.9rem;line-height:1;padding:0 2px}
+.upload-clear:hover{color:var(--rose)}
+.upload-go{
+  width:100%;margin-top:12px;padding:11px;
+  background:linear-gradient(135deg,var(--teal),#0d9488);border:none;border-radius:var(--rs);
+  color:#fff;font-family:var(--font);font-size:.8rem;font-weight:600;letter-spacing:.04em;
+  cursor:pointer;transition:opacity .2s;
+}
+.upload-go:hover{opacity:.88}
+.upload-go:disabled{opacity:.35;cursor:not-allowed}
+
+/* progress */
+.upload-progress{display:none;margin-top:14px}
+.upload-progress.show{display:block}
+.upload-stage{font-size:.65rem;color:var(--mid);margin-bottom:6px;display:flex;justify-content:space-between}
+.upload-bar-track{height:6px;background:var(--border2);border-radius:3px;overflow:hidden}
+.upload-bar-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--accent));border-radius:3px;
+  width:0%;transition:width .4s ease;min-width:4px}
+.upload-stage-label{font-size:.63rem;color:var(--teal);font-weight:600}
+
+/* transcript output */
+.upload-result{display:none;margin-top:16px}
+.upload-result.show{display:block}
+.upload-result-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.upload-result-title{font-size:.63rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green)}
+.upload-result-meta{font-size:.6rem;color:var(--dim)}
+.upload-dl{
+  background:transparent;border:1px solid rgba(16,185,129,.35);border-radius:5px;
+  padding:3px 10px;color:var(--green);font-family:var(--font);font-size:.62rem;cursor:pointer;
+}
+.upload-dl:hover{background:rgba(16,185,129,.08)}
+.upload-transcript{
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--rs);
+  padding:12px 14px;max-height:340px;overflow-y:auto;
+  font-size:.72rem;line-height:1.8;color:var(--mid);font-family:'Courier New',monospace;
+  white-space:pre-wrap;word-break:break-word;
+}
+.upload-transcript::-webkit-scrollbar{width:3px}
+.upload-transcript::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.upload-error{display:none;margin-top:12px;padding:10px 14px;
+  background:rgba(244,63,94,.07);border:1px solid rgba(244,63,94,.25);border-radius:var(--rs);
+  font-size:.73rem;color:#fca5a5;line-height:1.6}
+.upload-error.show{display:block}
+
+/* ── Meetings panel ── */
+.mtg-panel{display:none;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.mtg-panel.open{display:block}
+.mtg-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+.mtg-title{font-size:.61rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--amber)}
+.mtg-refresh{background:transparent;border:none;color:var(--dim);font-family:var(--font);font-size:.61rem;cursor:pointer;letter-spacing:.06em;text-transform:uppercase}
+.mtg-refresh:hover{color:var(--mid)}
+.mtg-list{max-height:520px;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:10px}
+.mtg-list::-webkit-scrollbar{width:3px}
+.mtg-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.mtg-empty{color:var(--dim);font-style:italic;font-size:.78rem;text-align:center;padding:20px 0}
+.mtg-card{background:var(--surface2);border:1px solid var(--border2);border-radius:var(--rs);overflow:hidden}
+.mtg-card-head{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none;gap:10px}
+.mtg-card-head:hover{background:rgba(245,158,11,.04)}
+.mtg-card-info{flex:1;min-width:0}
+.mtg-card-name{font-size:.82rem;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtg-card-meta{font-size:.63rem;color:var(--mid);margin-top:3px}
+.mtg-status{font-size:.57rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:6px;flex-shrink:0}
+.mtg-status.done{background:rgba(16,185,129,.12);color:var(--green)}
+.mtg-status.processing{background:rgba(245,158,11,.12);color:var(--amber)}
+.mtg-status.failed{background:rgba(244,63,94,.12);color:var(--rose)}
+.mtg-expand{font-size:.65rem;color:var(--dim);flex-shrink:0}
+.mtg-body{display:none;padding:0 13px 13px;border-top:1px solid var(--border)}
+.mtg-body.open{display:block}
+.mtg-section{margin-top:12px}
+.mtg-sh{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.mtg-summary{font-size:.78rem;line-height:1.7;color:var(--mid)}
+.mtg-list-items{list-style:none;display:flex;flex-direction:column;gap:4px}
+.mtg-list-items li{font-size:.76rem;color:var(--mid);padding-left:12px;position:relative;line-height:1.55}
+.mtg-list-items li::before{content:'•';position:absolute;left:0;color:var(--accent)}
+.ai-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:4px}
+.ai-table th{text-align:left;padding:5px 8px;color:var(--dim);font-weight:600;font-size:.6rem;letter-spacing:.07em;text-transform:uppercase;border-bottom:1px solid var(--border2)}
+.ai-table td{padding:6px 8px;color:var(--mid);border-bottom:1px solid var(--border);vertical-align:top}
+.ai-table tr:last-child td{border-bottom:none}
+.ai-pri{font-size:.58rem;font-weight:700;padding:2px 5px;border-radius:4px;text-transform:uppercase}
+.ai-pri.high{background:rgba(244,63,94,.12);color:var(--rose)}
+.ai-pri.medium{background:rgba(245,158,11,.12);color:var(--amber)}
+.ai-pri.low{background:rgba(16,185,129,.12);color:var(--green)}
+.ai-chk{accent-color:var(--accent);cursor:pointer;width:14px;height:14px}
+.mtg-resend{background:transparent;border:1px solid var(--border2);border-radius:5px;padding:3px 9px;
+  color:var(--dim);font-family:var(--font);font-size:.6rem;cursor:pointer;margin-top:10px;letter-spacing:.04em}
+.mtg-resend:hover{border-color:var(--amber);color:var(--amber)}
+</style>
+</head>
+
+<body class="s-idle">
+<div class="bg-glow"></div>
+
+<!-- ── Header ── -->
+<header class="hdr">
+  <div class="brand">
+    <div class="logo">🎙</div>
+    <div>
+      <div class="bname">Technodysis</div>
+      <div class="bsub">AI Voice Assistant v2.4</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <select class="voice-sel" id="voiceSelect" title="Change voice">
+      <option value="">Voice…</option>
+    </select>
+    <span class="badge" id="engineBadge">TTS</span>
+    <div class="spill">
+      <div class="sdot"></div>
+      <span id="statusTxt">ready</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main ── -->
+<main class="main">
+
+  <!-- Orb + wave -->
+  <div class="orb-sec">
+    <div class="orb-wrap">
+      <canvas class="wave-cv" id="waveCanvas" width="190" height="190"></canvas>
+      <div class="orb" id="orb"></div>
+    </div>
+    <div class="ctrls">
+      <button class="btn btn-start" id="micBtn">▶ Start Listening</button>
+      <button class="btn btn-int" id="intBtn" title="Interrupt (Space)">⚡ Interrupt</button>
+      <button class="btn btn-rst" id="resetBtn" title="Reset conversation (R)">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- TTS error -->
+  <div class="tts-err" id="ttsErr">
+    ⚠ No audio from TTS engine — check server console.<br>
+    Fix: <code>pip install edge-tts</code> then add <code>TTS_ENGINE=edge</code> to <code>.env</code>.
+  </div>
+
+  <!-- Conversation panels -->
+  <div class="panels">
+    <div class="panel panel-u">
+      <div class="phd"><div class="pico">🗣</div><span class="plbl">You said</span></div>
+      <div class="ptxt empty" id="transcriptEl">Waiting for speech…</div>
+    </div>
+    <div class="panel panel-a">
+      <div class="phd"><div class="pico">🤖</div><span class="plbl">Assistant</span></div>
+      <div class="ptxt empty" id="aiEl">Response will appear here…</div>
+      <div class="dots" id="dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+
+  <!-- Memory bar (emotion / intent / turns) -->
+  <div class="mem-bar">
+    <div class="mcard"><div class="mval en" id="mEmo">—</div><div class="mlbl">Emotion</div></div>
+    <div class="mcard"><div class="mval" id="mInt">—</div><div class="mlbl">Intent</div></div>
+    <div class="mcard"><div class="mval" id="mTurns">0</div><div class="mlbl">Turns</div></div>
+  </div>
+
+  <!-- Latency bar (STT / LLM / TTS / total) -->
+  <div class="lat-bar">
+    <div class="lat-card"><div class="lat-val" id="lat-stt">—</div><div class="lat-lbl">STT ms</div></div>
+    <div class="lat-card"><div class="lat-val" id="lat-llm">—</div><div class="lat-lbl">LLM ms</div></div>
+    <div class="lat-card"><div class="lat-val" id="lat-tts">—</div><div class="lat-lbl">TTS ms</div></div>
+    <div class="lat-card"><div class="lat-val" id="lat-total">—</div><div class="lat-lbl">Total ms</div></div>
+  </div>
+
+  <!-- Toggle row for panels -->
+  <div class="toggles">
+    <button class="hist-toggle" id="histToggle">📜 conversation</button>
+    <button class="dbtn" id="debugBtn">⚙ debug log</button>
+    <button class="dbtn" id="mtgBtn" style="border-color:rgba(245,158,11,.35);color:var(--amber)">📋 meetings</button>
+  </div>
+
+  <!-- Conversation history panel -->
+  <div class="hist-panel" id="histPanel">
+    <div class="hist-head">
+      <span class="hist-title">Conversation History</span>
+      <div class="hist-actions">
+        <button class="hist-btn" id="histExport">↓ export</button>
+        <button class="hist-btn" id="histClear">clear</button>
+      </div>
+    </div>
+    <div class="hist-log" id="histLog">
+      <p class="hist-empty">No turns yet — start speaking</p>
+    </div>
+  </div>
+
+  <!-- Meetings panel -->
+  <div class="mtg-panel" id="mtgPanel">
+    <div class="mtg-head">
+      <span class="mtg-title">📋 Recent Meetings</span>
+      <button class="mtg-refresh" id="mtgRefresh">↻ refresh</button>
+    </div>
+    <div class="mtg-list" id="mtgList">
+      <p class="mtg-empty">Loading meetings…</p>
+    </div>
+  </div>
+
+  <!-- Debug panel -->
+  <div class="dpanel" id="debugPanel">
+    <div class="dhd">
+      <span class="dtitle">WebSocket Event Log</span>
+      <button class="dclr" id="debugClr">clear</button>
+    </div>
+    <div class="dlog" id="debugLog"></div>
+  </div>
+
+  <!-- ── Upload Meeting Video ── -->
+  <div class="upload-section">
+    <div class="upload-head">
+      <span class="upload-title">🎬 Transcribe Meeting Video</span>
+      <span style="font-size:.6rem;color:var(--dim)">MP4 / MOV / MKV / WebM · any size</span>
+    </div>
+    <div class="upload-body">
+
+      <!-- Drop zone -->
+      <div class="upload-drop" id="uploadDrop">
+        <input type="file" id="uploadInput" accept="video/*,audio/*">
+        <div class="upload-drop-icon">📂</div>
+        <div class="upload-drop-hint">
+          <b>Click to choose</b> or drag &amp; drop your meeting recording<br>
+          <small>60-minute files supported · audio is extracted automatically</small>
+        </div>
+      </div>
+
+      <!-- Selected file info -->
+      <div class="upload-file-info" id="uploadFileInfo">
+        <span class="upload-fname" id="uploadFname">—</span>
+        <span class="upload-fsize" id="uploadFsize"></span>
+        <button class="upload-clear" id="uploadClear" title="Remove">✕</button>
+      </div>
+
+      <!-- Upload button -->
+      <button class="upload-go" id="uploadGo" disabled>⬆ Upload &amp; Transcribe</button>
+
+      <!-- Progress -->
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-stage">
+          <span class="upload-stage-label" id="uploadStageLabel">Uploading…</span>
+          <span id="uploadPct">0%</span>
+        </div>
+        <div class="upload-bar-track"><div class="upload-bar-fill" id="uploadBarFill"></div></div>
+      </div>
+
+      <!-- Error -->
+      <div class="upload-error" id="uploadError"></div>
+
+      <!-- Result -->
+      <div class="upload-result" id="uploadResult">
+        <div class="upload-result-head">
+          <span class="upload-result-title">✓ Transcript Ready</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="upload-result-meta" id="uploadResultMeta"></span>
+            <button class="upload-dl" id="uploadDlBtn">⬇ Download .txt</button>
+          </div>
+        </div>
+        <div class="upload-transcript" id="uploadTranscript"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="hint">
+    Speak naturally — silence ends your turn automatically.<br>
+    Speak while the assistant talks to interrupt at any time.<br>
+    <kbd>Space</kbd> interrupt &nbsp;·&nbsp; <kbd>R</kbd> reset
+  </p>
+
+</main>
+
+<div class="bct" id="bcToast"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Config ────────────────────────────────────────────────────────────────────
+const WS_URL =
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+const CLIENT_RMS_THRESH = 18;
+const CLIENT_BARGE_HOLD = 60;  // ms — fires before server confirms at 80ms
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const micBtn      = document.getElementById('micBtn');
+const intBtn      = document.getElementById('intBtn');
+const resetBtn    = document.getElementById('resetBtn');
+const statusTxt   = document.getElementById('statusTxt');
+const eBadge      = document.getElementById('engineBadge');
+const voiceSelect = document.getElementById('voiceSelect');
+const transcriptEl= document.getElementById('transcriptEl');
+const aiEl        = document.getElementById('aiEl');
+const dots        = document.getElementById('dots');
+const waveCV      = document.getElementById('waveCanvas');
+const orbEl       = document.getElementById('orb');
+const histToggle  = document.getElementById('histToggle');
+const histPanel   = document.getElementById('histPanel');
+const histLog     = document.getElementById('histLog');
+const histExport  = document.getElementById('histExport');
+const histClear   = document.getElementById('histClear');
+const debugBtn    = document.getElementById('debugBtn');
+const debugPanel  = document.getElementById('debugPanel');
+const debugLog    = document.getElementById('debugLog');
+const debugClr    = document.getElementById('debugClr');
+const bcToast     = document.getElementById('bcToast');
+const toastEl     = document.getElementById('toast');
+const ttsErr      = document.getElementById('ttsErr');
+const mEmo        = document.getElementById('mEmo');
+const mInt        = document.getElementById('mInt');
+const mTurns      = document.getElementById('mTurns');
+const ctx2d       = waveCV.getContext('2d');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let ws            = null;
+let audioCtx      = null;
+let analyser      = null;
+let dataArray     = null;
+let isRunning     = false;
+let agentState    = 'idle';
+let aiBuffer      = '';
+let audioQueue    = [];
+let isPlaying     = false;
+let curSource     = null;
+let zeroByteCount = 0;
+let bargeStart    = null;
+let bargeFired    = false;
+let bcTimer       = null;
+let historyTurns  = [];
+let lastUserText  = '';
+let isThinking    = false;
+let isAudioPlaying = false;
+
+function updateState() {
+  if (isAudioPlaying) {
+    setState('speaking');
+  } else if (isThinking) {
+    setState('thinking');
+  } else if (agentState !== 'listening') {
+    setState('idle');
+  }
+}
+
+function audioQueueBusy() {
+  return audioQueue.length > 0 || isPlaying || curSource !== null;
+}
+
+// ── Voice options ─────────────────────────────────────────────────────────────
+const VOICES = [
+  //['en-US-AriaNeural',    'Aria — US Female'],
+  ['en-US-GuyNeural',     'Guy — US Male'],
+  ['en-US-JennyNeural',   'Jenny — US Female'],
+  //['en-GB-SoniaNeural',   'Sonia — UK Female'],
+  //['en-GB-RyanNeural',    'Ryan — UK Male'],
+  ['en-IN-NeerjaNeural',  'Neerja — IN Female'],
+  //['en-IN-PrabhatNeural', 'Prabhat — IN Male'],
+];
+VOICES.forEach(([v, label]) => {
+  const o = document.createElement('option');
+  o.value = v; o.textContent = label;
+  voiceSelect.appendChild(o);
+});
+voiceSelect.onchange = () => {
+  const v = voiceSelect.value;
+  if (!v || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({type: 'set_voice', voice: v}));
+  dlog('INFO', `voice → ${v}`, 'tn');
+};
+
+// ── State machine ─────────────────────────────────────────────────────────────
+const LABELS = {idle:'ready', listening:'listening…', thinking:'thinking…', speaking:'speaking…', interrupted:'interrupted'};
+const ORBCOL = {
+  idle:[[99,144,255]], listening:[[255,121,152]], thinking:[[252,211,77]],
+  speaking:[[176,127,255]], interrupted:[[255,146,77]],
+};
+
+function setState(s) {
+  if (agentState === s) return;
+
+  dlog('STATE', `${agentState} → ${s}`, 'ts');
+  agentState = s;
+
+  document.body.className = `s-${s}`;
+  statusTxt.textContent = LABELS[s] || s;
+
+  dots.classList.toggle('show', s === 'thinking');
+  intBtn.classList.toggle('show', s === 'speaking');
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    dlog('WS', 'connected', 'tw');
+    showToast('Connected');
+    setState('idle');
+    flushAudio('reconnect');
+    ws.send(JSON.stringify({type: 'ping'}));
+  };
+
+  ws.onclose = e => {
+    dlog('WS', `closed ${e.code} — retry 2s`, 'te');
+    if (e.code !== 1000) showToast('Connection lost — reconnecting…', true);
+    setTimeout(connectWS, 2000);
+  };
+
+  ws.onerror = () => ws.close();
+
+  ws.onmessage = async evt => {
+    // Binary: TTS audio chunk
+    if (evt.data instanceof ArrayBuffer) {
+      if (!evt.data.byteLength) {
+        if (++zeroByteCount >= 2) ttsErr.classList.add('show');
+        return;
+      }
+      zeroByteCount = 0;
+      ttsErr.classList.remove('show');
+      dlog('TTS', `${evt.data.byteLength}B queued (qlen=${audioQueue.length})`, 'tt');
+      enqueueAudio(evt.data);
+      return;
+    }
+
+    // JSON message
+    let msg;
+    try { msg = JSON.parse(evt.data); } catch { return; }
+    dlog('WS', `← ${JSON.stringify(msg).slice(0, 100)}`, 'tw');
+
+    switch (msg.type) {
+
+      case 'session_start':
+        eBadge.textContent = (msg.tts_engine || 'tts').toUpperCase();
+        if (msg.tts_voice) voiceSelect.value = msg.tts_voice;
+        dlog('INFO', `session=${msg.session_id} engine=${msg.tts_engine} voice=${msg.tts_voice}`, 'tn');
+        break;
+
+      case 'status':
+        if (msg.text === 'listening') {
+          setState('listening');
+        }
+        // ignore thinking/speaking from server
+        break;
+
+      case 'partial':
+        transcriptEl.textContent = msg.text;
+        transcriptEl.classList.remove('empty');
+        break;
+
+      case 'transcript':
+        isThinking = true;
+        updateState();
+
+        lastUserText = msg.text;
+        transcriptEl.textContent = msg.text;
+        transcriptEl.classList.remove('empty');
+
+        aiEl.textContent = '';
+        aiEl.classList.add('empty');
+        aiBuffer = '';
+
+        flushAudio('new-transcript');
+        addHistoryTurn('user', msg.text);
+
+        if (msg.stt_ms) updateLatency('stt', msg.stt_ms);
+        break;
+
+      case 'ai_stream':
+        dots.classList.remove('show');
+        aiBuffer += msg.text;
+
+        aiEl.textContent = aiBuffer;
+        aiEl.classList.remove('empty');
+        break;
+
+      case 'ai_done':
+        isThinking = false;
+
+        if (msg.session) updateMemory(msg.session);
+
+        if (msg.latency) {
+          updateLatency('stt',   msg.latency.stt_ms);
+          updateLatency('llm',   msg.latency.llm_ms);
+          updateLatency('tts',   msg.latency.tts_ms);
+          updateLatency('total', msg.latency.total_ms);
+        }
+
+        if (aiBuffer) addHistoryTurn('assistant', aiBuffer);
+
+        updateState();
+        break;
+
+      case 'backchannel':
+        showBcToast(msg.text);
+        dlog('BC', msg.text, 'tb');
+        break;
+
+      case 'interrupt':
+        doInterrupt(`server (${msg.reason})`);
+        break;
+
+      case 'reset_ack':
+        clearConvo();
+        showToast('Conversation reset');
+        break;
+
+      case 'voice_changed':
+        voiceSelect.value = msg.voice || '';
+        showToast(`Voice: ${(msg.voice || '').split('-').slice(2).join(' ')}`);
+        break;
+
+      case 'error':
+        setState('idle');
+        showToast(msg.text || 'Error — please try again.', true);
+        dlog('ERR', msg.text || 'server error', 'te');
+        break;
+
+      case 'server_ping':
+        if (ws?.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({type: 'pong'}));
+        break;
+
+      case 'pong':
+        if (msg.session) updateMemory(msg.session);
+        break;
+
+      case 'session_update':
+        // Deferred push after classification completes (~1.2s after turn ends)
+        if (msg.session) updateMemory(msg.session);
+        dlog('MEM', `deferred update: emo=${msg.session?.emotion} intent=${msg.session?.intent}`, 'tm');
+        break;
+    }
+  };
+}
+
+// ── Memory bar ────────────────────────────────────────────────────────────────
+const EMO_CLS = {neutral:'en', happy:'eh', excited:'ee', sad:'es', angry:'ea', confused:'ec', frustrated:'ef'};
+
+// Map intent values to readable labels
+const INTENT_LABELS = {
+  information_request: 'information',
+  greeting:            'greeting',
+  complaint:           'complaint',
+  goodbye:             'goodbye',
+  unclear:             'unclear',
+  '':                  '—',
+};
+
+// Map intent to colour class
+const INTENT_CLS = {
+  information_request: 'en',   // blue (accent)
+  greeting:            'eh',   // green
+  complaint:           'ea',   // rose (angry = complaint)
+  goodbye:             'es',   // teal
+  unclear:             'ec',   // amber
+};
+
+function updateMemory(s) {
+  const emo    = (s.emotion || 'neutral').toLowerCase();
+  const intent = (s.intent  || '').toLowerCase();
+
+  mEmo.textContent = emo || '—';
+  mEmo.className   = 'mval ' + (EMO_CLS[emo] || 'en');
+
+  mInt.textContent = INTENT_LABELS[intent] || (intent.replace(/_/g,' ') || '—');
+  mInt.className   = 'mval ' + (INTENT_CLS[intent] || 'en');
+
+  mTurns.textContent = s.turns ?? '—';
+  dlog('MEM', `emo=${emo} intent=${intent} turns=${s.turns}`, 'tm');
+}
+
+// ── Latency display ───────────────────────────────────────────────────────────
+function updateLatency(key, ms) {
+  if (!ms && ms !== 0) return;
+  const el = document.getElementById(`lat-${key}`);
+  if (el) el.textContent = ms + 'ms';
+}
+
+// ── Conversation history ──────────────────────────────────────────────────────
+histToggle.onclick  = () => histPanel.classList.toggle('open');
+histClear.onclick   = () => { historyTurns = []; renderHistory(); };
+histExport.onclick  = () => {
+  const text = historyTurns.map(t =>
+    `[${t.ts}] ${t.role.toUpperCase()}: ${t.text}`
+  ).join('\n\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:'text/plain'}));
+  a.download = `conversation-${Date.now()}.txt`;
+  a.click();
+};
+
+function addHistoryTurn(role, text) {
+  if (!text || !text.trim()) return;
+  historyTurns.push({role, text: text.trim(), ts: new Date().toLocaleTimeString()});
+  renderHistory();
+  // Auto-open history panel on first turn
+  if (historyTurns.length === 1) histPanel.classList.add('open');
+}
+
+function renderHistory() {
+  if (!historyTurns.length) {
+    histLog.innerHTML = '<p class="hist-empty">No turns yet — start speaking</p>';
+    return;
+  }
+  histLog.innerHTML = '';
+  historyTurns.slice(-30).forEach(t => {
+    const d = document.createElement('div');
+    d.className = `hist-turn ${t.role === 'user' ? 'user' : 'asst'}`;
+    d.innerHTML =
+      `<span class="hist-ts">${t.ts}</span>` +
+      `<div class="hist-role">${t.role === 'user' ? 'You' : 'Assistant'}</div>` +
+      `<div>${esc(t.text)}</div>`;
+    histLog.appendChild(d);
+  });
+  histLog.scrollTop = histLog.scrollHeight;
+}
+
+// ── Backchannel toast ─────────────────────────────────────────────────────────
+function showBcToast(text) {
+  bcToast.textContent = text;
+  bcToast.classList.add('show');
+  clearTimeout(bcTimer);
+  bcTimer = setTimeout(() => bcToast.classList.remove('show'), 1800);
+}
+
+// ── Interrupt ─────────────────────────────────────────────────────────────────
+function doInterrupt(src) {
+  dlog('INT', `⚡ ${src}`, 'ti');
+
+  flushAudio('interrupt');
+
+  isAudioPlaying = false;
+  isThinking = false;
+
+  setState('interrupted');
+
+  setTimeout(() => updateState(), 200); // return to idle
+}
+
+function sendInterrupt() {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type: 'interrupt'}));
+    dlog('WS', '→ interrupt', 'ti');
+  }
+}
+
+intBtn.onclick   = () => { if (agentState !== 'speaking') return; doInterrupt('manual'); sendInterrupt(); };
+resetBtn.onclick = () => {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type: 'reset'}));
+};
+
+function clearConvo() {
+  transcriptEl.textContent = 'Waiting for speech…'; transcriptEl.classList.add('empty');
+  aiEl.textContent = 'Response will appear here…'; aiEl.classList.add('empty');
+  aiBuffer = ''; lastUserText = '';
+  mEmo.textContent = '—'; mEmo.className = 'mval en';
+  mInt.textContent = '—'; mTurns.textContent = '0';
+  ['stt','llm','tts','total'].forEach(k => {
+    const el = document.getElementById(`lat-${k}`);
+    if (el) el.textContent = '—';
+  });
+  historyTurns = []; renderHistory();
+}
+
+// Audio queue (Web Audio API)
+// AudioContext created inside mic button (user gesture) to satisfy autoplay policy.
+// Uses AudioBufferSourceNode for instant stop(0) on interrupt.
+
+function enqueueAudio(buf) {
+  if (!audioCtx) return;
+
+  audioQueue.push(buf.slice(0));
+
+  // FIRST AUDIO ARRIVAL → switch to speaking
+  if (!isAudioPlaying) {
+    isAudioPlaying = true;
+    isThinking = false;
+    updateState();
+  }
+
+  if (!isPlaying) playNext();
+}
+
+async function playNext() {
+  if (!audioQueue.length) {
+    isPlaying = false;
+    curSource = null;
+
+    // AUDIO FINISHED
+    isAudioPlaying = false;
+    updateState();
+
+    dlog('TTS', 'queue drained', 'tt');
+    return;
+  }
+
+  isPlaying = true;
+  const buf = audioQueue.shift();
+
+  try {
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+    const decoded = await audioCtx.decodeAudioData(buf);
+
+    if (!isPlaying) return;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = decoded;
+    src.connect(audioCtx.destination);
+
+    curSource = src;
+
+    src.onended = () => {
+      curSource = null;
+      playNext();
+    };
+
+    src.start(0);
+
+  } catch (e) {
+    dlog('TTS', `decode error: ${e}`, 'te');
+    curSource = null;
+    playNext();
+  }
+}
+
+function flushAudio(reason) {
+  audioQueue = [];
+
+  if (curSource) {
+    try { curSource.stop(0); curSource.disconnect(); } catch {}
+    curSource = null;
+  }
+
+  isPlaying = false;
+  isAudioPlaying = false;
+  isThinking = false;
+  updateState();
+}
+
+// ── Microphone + client VAD ───────────────────────────────────────────────────
+micBtn.onclick = async () => {
+  if (isRunning) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    isRunning = true;
+    micBtn.textContent = '● Listening';
+    micBtn.classList.add('active');
+    micBtn.disabled = true;
+
+    // Create AudioContext here — required by browser autoplay policy
+    audioCtx = new AudioContext({sampleRate: 16000});
+    dlog('INFO', `AudioContext state=${audioCtx.state}`, 'tn');
+
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    // 1024 samples @ 16kHz = 64ms/frame (was 4096 = 256ms — 4× faster barge-in)
+    const proc = audioCtx.createScriptProcessor(1024, 1, 1);
+    src.connect(proc);
+    proc.connect(audioCtx.destination);
+
+    proc.onaudioprocess = e => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const inp = e.inputBuffer.getChannelData(0);
+      const pcm = new Int16Array(inp.length);
+      for (let i = 0; i < inp.length; i++)
+        pcm[i] = Math.max(-32768, Math.min(32767, inp[i] * 32767));
+      ws.send(pcm.buffer);
+
+      // Client barge-in energy VAD
+      if (agentState !== 'speaking' || bargeFired) return;
+      let sum = 0;
+      for (let i = 0; i < inp.length; i++) sum += Math.abs(inp[i]);
+      const rms = (sum / inp.length) * 255;
+      if (rms > CLIENT_RMS_THRESH) {
+        if (!bargeStart) bargeStart = Date.now();
+        if (Date.now() - bargeStart >= CLIENT_BARGE_HOLD) {
+          bargeFired = true;
+          doInterrupt('client-vad');
+          sendInterrupt();
+        }
+      } else { bargeStart = null; }
+    };
+
+    showToast('Microphone active — speak naturally');
+    animateWave();
+
+  } catch (err) {
+    dlog('ERR', `mic denied: ${err}`, 'te');
+    showToast('Microphone access denied', true);
+    isRunning = false;
+  }
+};
+
+// ── Waveform ──────────────────────────────────────────────────────────────────
+function animateWave() {
+  requestAnimationFrame(animateWave);
+  if (!analyser) return;
+  analyser.getByteFrequencyData(dataArray);
+  ctx2d.clearRect(0, 0, 190, 190);
+  const [c] = ORBCOL[agentState] || ORBCOL.idle;
+  const cx = 95, cy = 95, base = 50, bars = dataArray.length, step = (2 * Math.PI) / bars;
+  let es = 0, eb = 0;
+  for (let i = 0; i < bars; i++) {
+    const v = dataArray[i], r = base + v / 5.2, a = i * step - Math.PI / 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(cx + Math.cos(a)*base, cy + Math.sin(a)*base);
+    ctx2d.lineTo(cx + Math.cos(a)*r,    cy + Math.sin(a)*r);
+    ctx2d.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${.22 + (v/255)*.68})`;
+    ctx2d.lineWidth = 1.5; ctx2d.stroke();
+    if (i >= 4 && i <= 44) { es += v; eb++; }
+  }
+  orbEl.style.transform = `scale(${1 + (eb > 0 ? es/eb : 0)/235})`;
+}
+
+// ── Debug log ─────────────────────────────────────────────────────────────────
+debugBtn.onclick = () => debugPanel.classList.toggle('open');
+debugClr.onclick = () => { debugLog.innerHTML = ''; };
+
+function dlog(tag, msg, cls = 'tn') {
+  const n = new Date();
+  const t = n.toTimeString().slice(3,8) + '.' + String(n.getMilliseconds()).padStart(3,'0').slice(0,2);
+  const d = document.createElement('div'); d.className = 'drow';
+  d.innerHTML = `<span class="dt">${t}</span><span class="dtag ${cls}">[${tag}]</span><span class="dmsg">${esc(msg)}</span>`;
+  debugLog.appendChild(d);
+  while (debugLog.children.length > 200) debugLog.removeChild(debugLog.firstChild);
+  debugLog.scrollTop = debugLog.scrollHeight;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let _tt = null;
+function showToast(msg, err = false) {
+  toastEl.textContent = msg;
+  toastEl.style.borderColor = err ? 'rgba(244,63,94,.45)' : 'var(--border2)';
+  toastEl.classList.add('show');
+  clearTimeout(_tt); _tt = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target !== document.body) return;
+  if (e.code === 'Space' && agentState === 'speaking') {
+    e.preventDefault();
+    doInterrupt('keyboard');
+    sendInterrupt();
+  }
+  if (e.code === 'KeyR' && agentState === 'idle') resetBtn.click();
+  if (e.code === 'KeyH') histToggle.click();
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+connectWS();
+dlog('INFO', 'Technodysis Voice Agent v2.4 ready', 'tn');
+
+// ── Upload & Transcribe ───────────────────────────────────────────────────────
+(function () {
+  const drop       = document.getElementById('uploadDrop');
+  const input      = document.getElementById('uploadInput');
+  const fileInfo   = document.getElementById('uploadFileInfo');
+  const fname      = document.getElementById('uploadFname');
+  const fsize      = document.getElementById('uploadFsize');
+  const clearBtn   = document.getElementById('uploadClear');
+  const goBtn      = document.getElementById('uploadGo');
+  const progress   = document.getElementById('uploadProgress');
+  const stageLabel = document.getElementById('uploadStageLabel');
+  const pctEl      = document.getElementById('uploadPct');
+  const barFill    = document.getElementById('uploadBarFill');
+  const errorEl    = document.getElementById('uploadError');
+  const resultEl   = document.getElementById('uploadResult');
+  const resultMeta = document.getElementById('uploadResultMeta');
+  const transcript = document.getElementById('uploadTranscript');
+  const dlBtn      = document.getElementById('uploadDlBtn');
+
+  let selectedFile = null;
+  let currentJobId = null;
+  let pollTimer    = null;
+
+  const STAGE_LABELS = {
+    uploading:         'Uploading file…',
+    extracting_audio:  'Extracting audio track…',
+    transcribing:      'Transcribing speech…',
+    done:              'Complete',
+    failed:            'Failed',
+  };
+
+  function fmtSize(bytes) {
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+    return (bytes / 1e3).toFixed(0) + ' KB';
+  }
+
+  function setProgress(pct, label) {
+    barFill.style.width = pct + '%';
+    pctEl.textContent   = pct + '%';
+    if (label) stageLabel.textContent = label;
+  }
+
+  function showError(msg) {
+    errorEl.textContent = '⚠ ' + msg;
+    errorEl.classList.add('show');
+  }
+
+  function clearError() {
+    errorEl.classList.remove('show');
+  }
+
+  function selectFile(file) {
+    selectedFile = file;
+    fname.textContent = file.name;
+    fsize.textContent = fmtSize(file.size);
+    fileInfo.classList.add('show');
+    goBtn.disabled = false;
+    clearError();
+    resultEl.classList.remove('show');
+    progress.classList.remove('show');
+  }
+
+  function resetUI() {
+    selectedFile = null;
+    input.value  = '';
+    fileInfo.classList.remove('show');
+    goBtn.disabled = true;
+    progress.classList.remove('show');
+    resultEl.classList.remove('show');
+    clearError();
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  // File picker
+  input.addEventListener('change', () => {
+    if (input.files[0]) selectFile(input.files[0]);
+  });
+  clearBtn.addEventListener('click', resetUI);
+
+  // Drag & drop
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f) selectFile(f);
+  });
+
+  // Upload via XHR so we get real upload progress events
+  goBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    goBtn.disabled = true;
+    clearError();
+    resultEl.classList.remove('show');
+    progress.classList.add('show');
+    setProgress(0, 'Uploading file…');
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    // Phase 1: XHR upload with progress
+    let jobId;
+    try {
+      jobId = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/upload/transcribe');
+
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable) {
+            // Upload counts as 0-40% of total progress
+            const pct = Math.round((e.loaded / e.total) * 40);
+            setProgress(pct, 'Uploading file…');
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve(JSON.parse(xhr.responseText).job_id);
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText).detail)); }
+            catch { reject(new Error(`HTTP ${xhr.status}`)); }
+          }
+        };
+        xhr.onerror   = () => reject(new Error('Network error'));
+        xhr.ontimeout = () => reject(new Error('Request timed out'));
+        xhr.timeout   = 0; // no timeout — large file
+        xhr.send(formData);
+      });
+    } catch (e) {
+      showError('Upload failed: ' + e.message);
+      goBtn.disabled = false;
+      progress.classList.remove('show');
+      return;
+    }
+
+    currentJobId = jobId;
+    setProgress(40, 'Upload complete — processing…');
+
+    // Phase 2: Poll status every 3 seconds
+    pollTimer = setInterval(async () => {
+      try {
+        const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
+        const data = await res.json();
+
+        if (data.status === 'failed') {
+          clearInterval(pollTimer);
+          showError(data.error || 'Transcription failed');
+          goBtn.disabled = false;
+          return;
+        }
+
+        // Map server progress (0-100) to UI range 40-99
+        const stagePct = data.status === 'transcribing'
+          ? 40 + Math.round((data.progress / 100) * 58)
+          : data.status === 'extracting_audio' ? 42
+          : data.status === 'uploading'         ? 40
+          : data.status === 'done'              ? 100
+          : 40;
+
+        const label = STAGE_LABELS[data.status] || data.status;
+        setProgress(stagePct, label);
+
+        if (data.status === 'done') {
+          clearInterval(pollTimer);
+          await loadTranscript(jobId, selectedFile ? selectedFile.name : 'transcript');
+        }
+      } catch (e) {
+        // transient network hiccup — keep polling
+      }
+    }, 3000);
+  });
+
+  async function loadTranscript(jobId, filename) {
+    try {
+      setProgress(100, 'Loading transcript…');
+      const res  = await fetch(`/upload/transcript/${encodeURIComponent(jobId)}`);
+      const text = await res.text();
+
+      const lines    = text.split('\n').filter(l => l.trim());
+      const wordCount = text.split(/\s+/).length;
+
+      transcript.textContent  = text;
+      resultMeta.textContent  = `${lines.length} segments · ~${wordCount.toLocaleString()} words`;
+      resultEl.classList.add('show');
+      progress.classList.remove('show');
+      goBtn.disabled = false;
+
+      // Download button
+      dlBtn.onclick = () => {
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename.replace(/\.[^.]+$/, '') + '_transcript.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // Cleanup job on server after download setup
+      fetch(`/upload/${encodeURIComponent(jobId)}`, { method: 'DELETE' }).catch(() => {});
+    } catch (e) {
+      showError('Could not load transcript: ' + e.message);
+      goBtn.disabled = false;
+    }
+  }
+})();
+
+// ── Meetings tab ─────────────────────────────────────────────────────────────
+const mtgBtn     = document.getElementById('mtgBtn');
+const mtgPanel   = document.getElementById('mtgPanel');
+const mtgList    = document.getElementById('mtgList');
+const mtgRefresh = document.getElementById('mtgRefresh');
+
+mtgBtn.onclick = () => {
+  const opening = !mtgPanel.classList.contains('open');
+  mtgPanel.classList.toggle('open');
+  if (opening) loadMeetings();
+};
+mtgRefresh.onclick = loadMeetings;
+
+async function loadMeetings() {
+  mtgList.innerHTML = '<p class="mtg-empty">Loading…</p>';
+  try {
+    const res  = await fetch('/meetings?page=1&page_size=30');
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) {
+      mtgList.innerHTML = '<p class="mtg-empty">No meetings found yet.</p>';
+      return;
+    }
+    mtgList.innerHTML = '';
+    data.items.forEach(m => mtgList.appendChild(buildCard(m)));
+  } catch (e) {
+    mtgList.innerHTML = `<p class="mtg-empty" style="color:var(--rose)">Error loading meetings: ${esc(String(e))}</p>`;
+  }
+}
+
+function buildCard(m) {
+  const card = document.createElement('div');
+  card.className = 'mtg-card';
+
+  const dateStr = m.date ? new Date(m.date).toLocaleString() : '—';
+  const meta    = [
+    dateStr,
+    m.duration_minutes  ? `${m.duration_minutes} min`       : null,
+    m.participant_count ? `${m.participant_count} attendees` : null,
+  ].filter(Boolean).join(' · ');
+
+  card.innerHTML = `
+    <div class="mtg-card-head" data-id="${esc(m.id)}">
+      <div class="mtg-card-info">
+        <div class="mtg-card-name">${esc(m.title)}</div>
+        <div class="mtg-card-meta">${esc(meta)}</div>
+      </div>
+      <span class="mtg-status ${esc(m.status)}">${esc(m.status)}</span>
+      <span class="mtg-expand">▼</span>
+    </div>
+    <div class="mtg-body" id="body-${esc(m.id)}"></div>`;
+
+  card.querySelector('.mtg-card-head').addEventListener('click', () => {
+    toggleMeetingBody(m.id, card);
+  });
+  return card;
+}
+
+async function toggleMeetingBody(id, card) {
+  const body   = card.querySelector('.mtg-body');
+  const expand = card.querySelector('.mtg-expand');
+  if (body.classList.contains('open')) {
+    body.classList.remove('open');
+    expand.textContent = '▼';
+    return;
+  }
+  expand.textContent = '▲';
+  body.classList.add('open');
+
+  if (body.dataset.loaded) return;
+  body.innerHTML = '<p class="mtg-empty" style="padding:10px 0">Loading detail…</p>';
+
+  try {
+    const res  = await fetch(`/meetings/${encodeURIComponent(id)}`);
+    const d    = await res.json();
+    body.innerHTML = renderDetail(d);
+    body.dataset.loaded = '1';
+
+    // wire action item checkboxes
+    body.querySelectorAll('.ai-chk').forEach(chk => {
+      chk.addEventListener('change', async () => {
+        const itemId = chk.dataset.id;
+        const status = chk.checked ? 'done' : 'open';
+        try {
+          await fetch(`/action-items/${encodeURIComponent(itemId)}`, {
+            method: 'PATCH',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({status}),
+          });
+          chk.closest('tr').style.opacity = chk.checked ? '0.45' : '1';
+        } catch (e) { showToast('Update failed', true); }
+      });
+    });
+
+    // wire resend button
+    const rsBtn = body.querySelector('.mtg-resend');
+    if (rsBtn) {
+      rsBtn.addEventListener('click', async () => {
+        const email = prompt('Send summary to (comma-separated emails):');
+        if (!email) return;
+        const params = email.split(',').map(e => `to=${encodeURIComponent(e.trim())}`).join('&');
+        try {
+          const r = await fetch(`/meetings/${encodeURIComponent(id)}/resend-email?${params}`, {method:'POST'});
+          const j = await r.json();
+          showToast(r.ok ? `Email sent to ${j.recipients.join(', ')}` : `Failed: ${j.detail}`, !r.ok);
+        } catch (e) { showToast('Email request failed', true); }
+      });
+    }
+
+  } catch (e) {
+    body.innerHTML = `<p class="mtg-empty" style="color:var(--rose);padding:10px 0">Error: ${esc(String(e))}</p>`;
+  }
+}
+
+function renderDetail(d) {
+  let html = '';
+
+  if (d.summary) {
+    html += `<div class="mtg-section"><div class="mtg-sh">Summary</div>
+      <div class="mtg-summary">${esc(d.summary)}</div></div>`;
+  }
+
+  if (d.decisions && d.decisions.length) {
+    html += `<div class="mtg-section"><div class="mtg-sh">Decisions</div><ul class="mtg-list-items">`;
+    d.decisions.forEach(dec => { html += `<li>${esc(dec)}</li>`; });
+    html += '</ul></div>';
+  }
+
+  if (d.action_items && d.action_items.length) {
+    html += `<div class="mtg-section"><div class="mtg-sh">Action Items</div>
+      <table class="ai-table">
+        <thead><tr>
+          <th>Done</th><th>Task</th><th>Owner</th><th>Due</th><th>Priority</th>
+        </tr></thead><tbody>`;
+    d.action_items.forEach(ai => {
+      const done = ai.status === 'done';
+      const pri  = (ai.priority || 'medium').toLowerCase();
+      html += `<tr style="opacity:${done?'0.45':'1'}">
+        <td><input type="checkbox" class="ai-chk" data-id="${esc(ai.id)}" ${done?'checked':''}></td>
+        <td>${esc(ai.task)}</td>
+        <td>${esc(ai.owner || '—')}</td>
+        <td>${esc(ai.deadline || '—')}</td>
+        <td><span class="ai-pri ${pri}">${pri}</span></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+
+  if (d.open_questions && d.open_questions.length) {
+    html += `<div class="mtg-section"><div class="mtg-sh">Open Questions</div><ul class="mtg-list-items">`;
+    d.open_questions.forEach(q => { html += `<li>${esc(q)}</li>`; });
+    html += '</ul></div>';
+  }
+
+  html += `<button class="mtg-resend">✉ Resend Summary Email</button>`;
+  return html;
+}
+</script>
+</body>
+</html>

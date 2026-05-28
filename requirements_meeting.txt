@@ -1,0 +1,35 @@
+# ── Teams Meeting Assistant — Additional Requirements ─────────────────────────
+# Install alongside existing requirements.txt:
+#   pip install -r requirements.txt -r requirements_meeting.txt
+
+# Transcription with speaker diarization
+whisperx>=3.1.0          # recommended — wraps faster-whisper + alignment + diarization
+# faster-whisper>=1.0.0  # already in requirements.txt (fallback if whisperx not available)
+
+# Optional: pyannote for diarization (requires HF token)
+# pyannote.audio>=3.0.0  # uncomment if you want speaker labels via HuggingFace
+
+# Database (async PostgreSQL)
+asyncpg>=0.29.0
+sqlalchemy[asyncio]>=2.0.0
+alembic>=1.13.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Object storage (MinIO/S3)
+boto3>=1.34.0
+
+# Email templating
+jinja2>=3.1.0
+
+# HTTP client (async)
+httpx>=0.27.0
+
+# Microsoft Graph API auth
+# (uses httpx — no extra SDK needed; msal can be added for advanced scenarios)
+# msal>=1.28.0
+
+# Misc
+python-multipart>=0.0.9   # for form data in FastAPI (already pulled by uvicorn in some installs)
+python-dotenv>=1.0.0      # env var loading

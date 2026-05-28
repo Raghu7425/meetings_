@@ -1,0 +1,30 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Models cache
+.cache/
+huggingface/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Backup Folders
+backup/
+1backup/
+
+# Uploaded meeting files (auto-cleaned after transcription, but just in case)
+uploads/

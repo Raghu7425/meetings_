@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Secrets
+.env
+
+# Uploaded meeting files (mounted as volume)
+uploads/
+
+# Model caches (mounted as volumes)
+.cache/
+huggingface/
+
+# Logs (mounted as volume)
+logs/
+
+# Data / vector DB (mounted as volume)
+data/vector_database/
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs / IDE
+*.md
+.vscode/
+.idea/

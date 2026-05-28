@@ -1,0 +1,59 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker compose up --build
+#  No .env file needed for basic usage (video upload + transcription).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8096:8096"
+    volumes:
+      # Uploaded videos are cleaned up after transcription, but persist across restarts
+      - ./uploads:/app/uploads
+      # Whisper model cache — downloaded once, reused on restart
+      - whisper_cache:/root/.cache/huggingface
+      # App logs
+      - ./logs:/app/logs
+      # Knowledge base and FAISS index for the voice assistant
+      - ./data:/app/data
+    environment:
+      # Whisper model size: tiny (fastest) | base | small | medium | large-v2
+      STT_MODEL_NAME:    base
+      WHISPER_MODEL_SIZE: base
+      WHISPER_DEVICE:    cpu
+      # Set to your language code, e.g. "en", "hi", "fr" — or leave blank for auto-detect
+      STT_LANGUAGE:      en
+      WHISPER_LANGUAGE:  en
+    restart: unless-stopped
+
+
+volumes:
+  whisper_cache:
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  OPTIONAL: add Ollama for the voice assistant LLM feature.
+#  Uncomment the block below and add to the app's depends_on if you need it.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  ollama:
+#    image: ollama/ollama:latest
+#    ports:
+#      - "11434:11434"
+#    volumes:
+#      - ollama_models:/root/.ollama
+#    restart: unless-stopped
+#
+#  (also add to volumes: section)
+#  ollama_models:
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#  OPTIONAL: full Teams Meeting Assistant stack (needs .env with credentials).
+#  See docker-compose.full.yml
+# ─────────────────────────────────────────────────────────────────────────────
