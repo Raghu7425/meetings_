@@ -24,13 +24,11 @@ This file is responsible for understanding user input and generating AI response
 import os
 import re
 import time
-import subprocess
 import requests
 import json
 import asyncio
 import logging
 import random
-import ollama
 import faiss
 import httpx
 import PyPDF2
@@ -42,12 +40,12 @@ from typing import AsyncIterator, TypedDict
 from sentence_transformers import SentenceTransformer
 from langchain_core.messages import HumanMessage, AIMessage
 from app.core.prompts import SYSTEM_PROMPT
-from app.config import (BC_COOLDOWN, MAX_CACHE_SIZE, SENTENCE_TRANSFORMER_MODEL, LLM_MODEL, 
-                        LLM_API_TIMEOUT, LLM_WARMUP_TIMEOUT, LLM_WARMUP_NUM_PREDICT, 
+from app.config import (BC_COOLDOWN, MAX_CACHE_SIZE, SENTENCE_TRANSFORMER_MODEL, LLM_MODEL,
+                        LLM_API_TIMEOUT, LLM_WARMUP_TIMEOUT, LLM_WARMUP_NUM_PREDICT,
                         LLM_STREAM_REQUEST_TIMEOUT, LLM_MAX_GENERATION_TOKENS, LLM_TEMPERATURE,
-                        LLM_CONTEXT_WINDOW_TOKENS, LLM_CHAT_HISTORY_LIMIT, CHUNK_SIZE, RETRIEVAL_TOP_K, 
-                        FUZZY_MATCH_THRESHOLD, ENTITY_CORRECTIONS, MAX_HISTORY_TURNS, INPUT_DIR, 
-                        FAISS_INDEX_DIR, CHUNKS_NPY_DIR, VECTOR_DB_DIR)
+                        LLM_CONTEXT_WINDOW_TOKENS, LLM_CHAT_HISTORY_LIMIT, CHUNK_SIZE, RETRIEVAL_TOP_K,
+                        FUZZY_MATCH_THRESHOLD, ENTITY_CORRECTIONS, MAX_HISTORY_TURNS, INPUT_DIR,
+                        FAISS_INDEX_DIR, CHUNKS_NPY_DIR, VECTOR_DB_DIR, OLLAMA_BASE_URL)
 
 
 log = logging.getLogger("agent")
@@ -96,7 +94,7 @@ def _prune_history(history: list) -> list:
 def keep_model_warm():
     try:
         requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": LLM_MODEL,
                 "prompt": "",
@@ -105,7 +103,7 @@ def keep_model_warm():
             timeout=LLM_API_TIMEOUT,
         )
         log.info("[agent] Model kept warm in memory")
-    
+
     except Exception as e:
         log.warning(f"[agent] Could not set keep_alive: {e}")
 
@@ -113,17 +111,11 @@ def keep_model_warm():
 
 def LLM_MODEL_initialization():
     try:
-        ollama.list()
-        log.info("[agent] Ollama already running")
-    
-    except Exception:
-        log.info("[agent] Starting Ollama server...")
-        subprocess.Popen(
-            ["ollama", "serve"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        time.sleep(5)
+        resp = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=LLM_API_TIMEOUT)
+        resp.raise_for_status()
+        log.info("[agent] Ollama is reachable at %s", OLLAMA_BASE_URL)
+    except Exception as e:
+        log.warning("[agent] Ollama not reachable at %s: %s — LLM features will be degraded", OLLAMA_BASE_URL, e)
 
 
 
@@ -286,7 +278,7 @@ def initialize_system():
 
     try:
         requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": LLM_MODEL,
                 "prompt": "hi",
@@ -314,8 +306,12 @@ async def ensure_system_initialized():
         if _system_ready and _index is not None and _chunks is not None:
             return _index, _chunks
 
-        _index, _chunks = await asyncio.to_thread(initialize_system)
-        _system_ready = True
+        try:
+            _index, _chunks = await asyncio.to_thread(initialize_system)
+            _system_ready = True
+        except Exception as e:
+            log.warning("[agent] System initialization failed: %s — continuing degraded", e)
+            _system_ready = True  # prevent repeated retries on every request
 
         return _index, _chunks
 
@@ -333,7 +329,7 @@ async def generate_response_stream(index, chunks, query: str, session_id: str):
     async with httpx.AsyncClient(timeout=LLM_STREAM_REQUEST_TIMEOUT) as client:
         async with client.stream(
             "POST",
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": LLM_MODEL,
                 "prompt": prompt,

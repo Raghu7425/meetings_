@@ -1,3 +1,5 @@
+name: meeting_assistant
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Technodysis Meeting Assistant — Full GPU Stack
 #
@@ -92,9 +94,10 @@ services:
       DATABASE_URL:       postgresql+asyncpg://meetuser:meetpass@postgres:5432/meetingdb
       MINIO_ENDPOINT:     http://minio:9000
       OLLAMA_BASE_URL:    http://ollama:11434
-      WHISPER_DEVICE:     cuda
-      STT_DEVICE:         cuda
-      STT_COMPUTE_TYPE:   float16
+      WHISPER_DEVICE:     cpu
+      STT_DEVICE:         cpu
+      STT_COMPUTE_TYPE:   float32
+      SPEAKER_DEVICE:     cuda:0
       TTS_DEVICE:         cuda
     volumes:
       - ./uploads:/app/uploads

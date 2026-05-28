@@ -38,13 +38,16 @@ def get_device() -> str:
 
     forced = os.environ.get("SPEAKER_DEVICE", "").strip().lower()
 
-    if forced in {"cpu", "cuda"}:
-        if forced == "cuda" and not torch.cuda.is_available():
-            log.warning("[speaker] SPEAKER_DEVICE=cuda but CUDA is not available. Falling back to cpu.")
+    if forced:
+        if forced.startswith("cuda"):
+            if not torch.cuda.is_available():
+                log.warning("[speaker] SPEAKER_DEVICE=%s but CUDA is not available. Falling back to cpu.", forced)
+                return "cpu"
+            return forced
+        if forced == "cpu":
             return "cpu"
-        return forced
 
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 
