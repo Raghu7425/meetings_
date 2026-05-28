@@ -183,55 +183,62 @@ def _read_pdf(file_path: str) -> str:
 
 
 def load_knowledge_base_data() -> str:
-    
+    os.makedirs(INPUT_DIR, exist_ok=True)
     all_text = ""
 
-    for filename in os.listdir(INPUT_DIR):
-        file_path = os.path.join(INPUT_DIR, filename)
-
-        if not os.path.isfile(file_path):
-            continue
-
-        try:
-            if filename.endswith(".txt"):
-                log.info(f"[agent] Reading TXT: {filename}")
-                all_text += _read_txt(file_path) + "\n\n"
-
-            elif filename.endswith(".pdf"):
-                log.info(f"[agent] Reading PDF: {filename}")
-                all_text += _read_pdf(file_path) + "\n\n"
-
-            elif filename.endswith(".docx"):
-                log.info(f"[agent] Reading DOCX: {filename}")
-                all_text += _read_docx(file_path) + "\n\n"
-
-            else:
-                log.warning(f"[agent] Skipping unsupported file: {filename}")
-
-        except Exception as e:
-            log.error(f"[agent] Failed to read {filename}: {e}")
+    for root, dirs, files in os.walk(INPUT_DIR):
+        dirs.sort()
+        for filename in sorted(files):
+            file_path = os.path.join(root, filename)
+            try:
+                if filename.endswith(".txt"):
+                    log.info(f"[agent] Reading TXT: {file_path}")
+                    all_text += _read_txt(file_path) + "\n\n"
+                elif filename.endswith(".pdf"):
+                    log.info(f"[agent] Reading PDF: {file_path}")
+                    all_text += _read_pdf(file_path) + "\n\n"
+                elif filename.endswith(".docx"):
+                    log.info(f"[agent] Reading DOCX: {file_path}")
+                    all_text += _read_docx(file_path) + "\n\n"
+                else:
+                    log.warning(f"[agent] Skipping unsupported file: {filename}")
+            except Exception as e:
+                log.error(f"[agent] Failed to read {file_path}: {e}")
 
     return all_text
 
 
 
+def _input_files_changed() -> bool:
+    """True if any file under INPUT_DIR is newer than the cached FAISS index."""
+    if not os.path.exists(FAISS_INDEX_DIR):
+        return True
+    index_mtime = os.path.getmtime(FAISS_INDEX_DIR)
+    for root, _, files in os.walk(INPUT_DIR):
+        for fname in files:
+            if os.path.getmtime(os.path.join(root, fname)) > index_mtime:
+                return True
+    return False
+
+
 def vector_database():
-
     os.makedirs(VECTOR_DB_DIR, exist_ok=True)
+    os.makedirs(INPUT_DIR, exist_ok=True)
 
-    if os.path.exists(FAISS_INDEX_DIR) and os.path.exists(CHUNKS_NPY_DIR):
+    if (os.path.exists(FAISS_INDEX_DIR) and os.path.exists(CHUNKS_NPY_DIR)
+            and not _input_files_changed()):
         log.info("[agent] Loading existing vector DB...")
         index = faiss.read_index(FAISS_INDEX_DIR)
-        chunks = np.load(CHUNKS_NPY_DIR, allow_pickle=True)
+        chunks = np.load(CHUNKS_NPY_DIR, allow_pickle=True).tolist()
         return index, chunks
 
-    log.info("[agent] Creating vector DB...")
+    log.info("[agent] Building vector DB from input files...")
     text = load_knowledge_base_data()
     if not text.strip():
-        raise ValueError("[agent] No readable content found in input/ folder.")
-    
-    chunks = split_text(text)
+        log.warning("[agent] No readable content in input/ — knowledge base is empty.")
+        return None, []
 
+    chunks = split_text(text)
     embeddings = embed_model.encode(chunks, normalize_embeddings=True).astype("float32")
     dimension = embeddings.shape[1]
 
@@ -239,7 +246,8 @@ def vector_database():
     index.add(embeddings)
 
     faiss.write_index(index, FAISS_INDEX_DIR)
-    np.save(CHUNKS_NPY_DIR, chunks)
+    np.save(CHUNKS_NPY_DIR, np.array(chunks, dtype=object))
+    log.info("[agent] Vector DB built with %d chunks.", len(chunks))
 
     return index, chunks
 
@@ -260,11 +268,12 @@ def normalize_query(query: str) -> str:
 
 
 def get_top_chunks(query: str, index, chunks, k: int = RETRIEVAL_TOP_K):
-
+    if index is None or not chunks:
+        return []
     q_embed = embed_model.encode([query], normalize_embeddings=True).astype("float32")
+    k = min(k, len(chunks))
     _, indices = index.search(q_embed, k)
-
-    return [chunks[i] for i in indices[0]]
+    return [str(chunks[i]) for i in indices[0] if i < len(chunks)]
 
 
 
@@ -299,29 +308,45 @@ async def ensure_system_initialized():
 
     global _index, _chunks, _system_ready
 
-    if _system_ready and _index is not None and _chunks is not None:
+    if _system_ready:
         return _index, _chunks
 
     async with _init_lock:
-        if _system_ready and _index is not None and _chunks is not None:
+        if _system_ready:
             return _index, _chunks
 
         try:
             _index, _chunks = await asyncio.to_thread(initialize_system)
-            _system_ready = True
         except Exception as e:
             log.warning("[agent] System initialization failed: %s — continuing degraded", e)
-            _system_ready = True  # prevent repeated retries on every request
+            _index, _chunks = None, None
+        finally:
+            _system_ready = True
 
         return _index, _chunks
 
 
+def invalidate_agent_index() -> None:
+    """Delete cached index files and reset globals so the next request triggers a full rebuild."""
+    global _index, _chunks, _system_ready
+    _index = None
+    _chunks = None
+    _system_ready = False
+    for path in (FAISS_INDEX_DIR, CHUNKS_NPY_DIR):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError as e:
+            log.warning("[agent] Could not remove %s: %s", path, e)
+    log.info("[agent] Index invalidated — will rebuild on next request")
+
+
 
 async def generate_response_stream(index, chunks, query: str, session_id: str):
-    
+
     query_clean = normalize_query(query=query)
     top_chunks = get_top_chunks(query=query_clean, index=index, chunks=chunks)
-    context = "\n\n".join(top_chunks)
+    context = "\n\n".join(top_chunks) if top_chunks else "No knowledge base context available."
     conversation_history = get_last_conversations(session_id=session_id)
 
     prompt = SYSTEM_PROMPT.format(conversation_history=conversation_history, context=context, query=query)

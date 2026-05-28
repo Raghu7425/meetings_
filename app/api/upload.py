@@ -10,13 +10,12 @@ import numpy as np
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from app.config import OLLAMA_BASE_URL, MEETING_LLM_MODEL, MEETING_LLM_TIMEOUT
+from app.config import OLLAMA_BASE_URL, MEETING_LLM_MODEL, MEETING_LLM_TIMEOUT, UPLOADS_DIR, MEETINGS_INPUT_DIR
 
 log = logging.getLogger("upload")
 router = APIRouter(prefix="/upload", tags=["upload"])
 
-_BASE_DIR  = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-UPLOAD_DIR = os.path.join(_BASE_DIR, "uploads")
+UPLOAD_DIR = UPLOADS_DIR
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # { job_id: {status, progress, filename, transcript_path, summary, rag_index, rag_chunks, error} }
@@ -104,8 +103,23 @@ def _transcribe_file(audio_path: str, job_id: str) -> str:
     return "\n".join(lines)
 
 
-def _build_rag_index(transcript: str):
-    chunks = [l.strip() for l in transcript.split("\n") if len(l.strip()) > 20]
+def _build_rag_index(transcript: str, summary: str = ""):
+    lines = [l.strip() for l in transcript.split("\n") if len(l.strip()) > 20]
+    if not lines:
+        return None, []
+
+    chunks = []
+    # Summary as its own searchable chunk so broad questions can match it
+    if summary and len(summary.strip()) > 20:
+        chunks.append(f"[MEETING SUMMARY]\n{summary.strip()}")
+
+    # Overlapping windows of 6 lines (step 3) for richer context per chunk
+    window, step = 6, 3
+    for i in range(0, len(lines), step):
+        block = "\n".join(lines[i:i + window])
+        if block.strip():
+            chunks.append(block)
+
     if not chunks:
         return None, []
     try:
@@ -165,11 +179,12 @@ async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
         with open(txt_path, "w", encoding="utf-8") as f:
             f.write(f"# Transcript: {filename}\n\n{transcript}")
 
-        rag_index, rag_chunks = await asyncio.to_thread(_build_rag_index, transcript)
-
         _jobs[job_id]["status"] = _STATUS_SUMMARIZING
         log.info(f"[upload] {job_id}: generating summary")
         summary = await _generate_summary(transcript)
+
+        # Build RAG after summary so summary is embedded as a chunk too
+        rag_index, rag_chunks = await asyncio.to_thread(_build_rag_index, transcript, summary)
 
         _jobs[job_id].update(
             status=_STATUS_DONE,
@@ -179,6 +194,20 @@ async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
             rag_index=rag_index,
             rag_chunks=rag_chunks,
         )
+
+        # Persist transcript + summary to knowledge base so voice chat can answer meeting questions
+        try:
+            os.makedirs(MEETINGS_INPUT_DIR, exist_ok=True)
+            kb_path = os.path.join(MEETINGS_INPUT_DIR, f"{job_id}.txt")
+            with open(kb_path, "w", encoding="utf-8") as f:
+                f.write(f"# Meeting: {filename}\n\n## Summary\n{summary}\n\n## Transcript\n{transcript}")
+            _jobs[job_id]["kb_path"] = kb_path
+            from app.core.agent import invalidate_agent_index
+            invalidate_agent_index()
+            log.info(f"[upload] {job_id}: transcript added to agent knowledge base")
+        except Exception as e:
+            log.warning(f"[upload] {job_id}: could not update agent knowledge base: {e}")
+
         log.info(f"[upload] {job_id}: complete")
 
     except Exception as e:
@@ -271,29 +300,45 @@ async def ask_question(job_id: str, body: QuestionRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question is empty")
 
-    rag_index  = job.get("rag_index")
-    rag_chunks = job.get("rag_chunks") or []
+    rag_index   = job.get("rag_index")
+    rag_chunks  = job.get("rag_chunks") or []
+    summary_txt = (job.get("summary") or "").strip()
+
+    context_parts = []
 
     if rag_index is not None and rag_chunks:
         try:
             model = _get_embed_model()
             q_emb = model.encode([question], normalize_embeddings=True).astype("float32")
-            _, indices = rag_index.search(q_emb, min(5, len(rag_chunks)))
-            context = "\n".join(rag_chunks[i] for i in indices[0] if i < len(rag_chunks))
+            k = min(10, len(rag_chunks))
+            _, indices = rag_index.search(q_emb, k)
+            rag_ctx = "\n\n".join(
+                rag_chunks[i] for i in indices[0] if i < len(rag_chunks)
+            )
         except Exception as e:
             log.warning(f"[upload] RAG retrieval failed: {e}")
-            context = "\n".join(rag_chunks[:10])
+            rag_ctx = "\n\n".join(rag_chunks[:15])
+
+        if summary_txt:
+            context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
+        if rag_ctx:
+            context_parts.append(f"RELEVANT TRANSCRIPT SECTIONS:\n{rag_ctx}")
     else:
+        # Fallback: summary + raw transcript file
+        if summary_txt:
+            context_parts.append(f"MEETING SUMMARY:\n{summary_txt}")
         path = job.get("transcript_path")
-        context = ""
         if path and os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
-                context = f.read(4000)
+                context_parts.append(f"TRANSCRIPT:\n{f.read(6000)}")
+
+    context = "\n\n---\n\n".join(context_parts) if context_parts else "No meeting content available."
 
     prompt = (
-        "You are a meeting assistant. Answer the question based only on the meeting transcript below.\n"
-        "If the answer is not in the transcript, say so clearly.\n\n"
-        f"TRANSCRIPT EXCERPTS:\n{context}\n\n"
+        "You are a meeting assistant. Answer the following question using the meeting content provided below.\n"
+        "Use the summary and transcript sections to give a specific, complete answer.\n"
+        "If the information is not present in the content, say so clearly.\n\n"
+        f"MEETING CONTENT:\n{context}\n\n"
         f"QUESTION: {question}\n\nANSWER:"
     )
 
@@ -305,7 +350,7 @@ async def ask_question(job_id: str, body: QuestionRequest):
                     "model": MEETING_LLM_MODEL,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 300},
+                    "options": {"temperature": 0.1, "num_predict": 512},
                 },
             )
             answer = r.json().get("response", "").strip() or "No answer available."
@@ -321,7 +366,22 @@ async def delete_job(job_id: str):
     job = _jobs.pop(job_id, None)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    path = job.get("transcript_path")
-    if path and os.path.exists(path):
-        os.unlink(path)
+
+    for key in ("transcript_path", "kb_path"):
+        path = job.get(key)
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    kb_path = job.get("kb_path")
+    if kb_path and not os.path.exists(kb_path):
+        # File was removed — invalidate agent index so it rebuilds without this meeting
+        try:
+            from app.core.agent import invalidate_agent_index
+            invalidate_agent_index()
+        except Exception:
+            pass
+
     return {"deleted": job_id}

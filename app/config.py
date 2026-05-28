@@ -27,7 +27,7 @@ HEALTH_VAD_LABEL = "silero"
 
 
 # Paths
-_BASE              = os.path.dirname(os.path.dirname(__file__))
+_BASE              = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 DATA_DIR           = os.path.join(_BASE, "data")
 INPUT_DIR          = os.path.join(DATA_DIR, "input")
 VECTOR_DB_DIR      = os.path.join(DATA_DIR, "vector_database")
@@ -35,6 +35,8 @@ KNOWLEDGE_BASE_DIR = os.path.join(INPUT_DIR, "knowledge_base.txt")
 FAISS_INDEX_DIR    = os.path.join(VECTOR_DB_DIR, "company_index.faiss")
 CHUNKS_NPY_DIR     = os.path.join(VECTOR_DB_DIR, "chunks.npy")
 STATIC_DIR         = os.path.join(_BASE, "static")
+UPLOADS_DIR        = os.path.join(_BASE, "uploads")
+MEETINGS_INPUT_DIR = os.path.join(INPUT_DIR, "meetings")
 
 
 # User Interface
@@ -60,12 +62,12 @@ LLM_API_TIMEOUT            = int(os.getenv("LLM_API_TIMEOUT", "10"))
 LLM_WARMUP_TIMEOUT         = int(os.getenv("LLM_WARMUP_TIMEOUT", "15"))
 LLM_WARMUP_NUM_PREDICT     = int(os.getenv("LLM_WARMUP_NUM_PREDICT", "5"))
 LLM_STREAM_REQUEST_TIMEOUT = int(os.getenv("LLM_STREAM_REQUEST_TIMEOUT", "30"))
-LLM_MAX_GENERATION_TOKENS  = int(os.getenv("LLM_MAX_GENERATION_TOKENS", "150"))
+LLM_MAX_GENERATION_TOKENS  = int(os.getenv("LLM_MAX_GENERATION_TOKENS", "250"))
 LLM_CONTEXT_WINDOW_TOKENS  = int(os.getenv("LLM_CONTEXT_WINDOW_TOKENS", "2048"))
 LLM_TEMPERATURE            = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 LLM_CHAT_HISTORY_LIMIT     = int(os.getenv("LLM_CHAT_HISTORY_LIMIT", "5"))
 CHUNK_SIZE                 = int(os.getenv("CHUNK_SIZE", "150"))
-RETRIEVAL_TOP_K            = int(os.getenv("RETRIEVAL_TOP_K", "2"))
+RETRIEVAL_TOP_K            = int(os.getenv("RETRIEVAL_TOP_K", "5"))
 FUZZY_MATCH_THRESHOLD      = int(os.getenv("FUZZY_MATCH_THRESHOLD", "80"))
 MAX_HISTORY_TURNS          = int(os.getenv("MAX_HISTORY_TURNS", "20"))
 ENTITY_CORRECTIONS         = {"technodysis": ["technodysi", "technodsis", "technoysis", "technodsy", "technodys"]}
