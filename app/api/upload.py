@@ -202,9 +202,10 @@ async def _run_pipeline(job_id: str, video_path: str, filename: str) -> None:
             with open(kb_path, "w", encoding="utf-8") as f:
                 f.write(f"# Meeting: {filename}\n\n## Summary\n{summary}\n\n## Transcript\n{transcript}")
             _jobs[job_id]["kb_path"] = kb_path
-            from app.core.agent import invalidate_agent_index
+            from app.core.agent import invalidate_agent_index, ensure_system_initialized
             invalidate_agent_index()
-            log.info(f"[upload] {job_id}: transcript added to agent knowledge base")
+            await ensure_system_initialized()
+            log.info(f"[upload] {job_id}: transcript added to agent knowledge base and index rebuilt")
         except Exception as e:
             log.warning(f"[upload] {job_id}: could not update agent knowledge base: {e}")
 
