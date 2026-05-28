@@ -50,7 +50,7 @@ from app.config import (BC_COOLDOWN, MAX_CACHE_SIZE, SENTENCE_TRANSFORMER_MODEL,
 
 log = logging.getLogger("agent")
 
-embed_model = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
+embed_model = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL, device="cpu")
 
 _BACKCHANNELS = ["Okay…", "Got it…", "Alright…", "I see…", "Sure…"]
 
