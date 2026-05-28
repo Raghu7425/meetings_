@@ -1,16 +1,30 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Technodysis Meeting Assistant — Dockerfile
 #
-#  Default (slim): video upload + transcription only  →  ~1.5 GB image
-#  Full voice assistant:
-#    docker compose build --build-arg MODE=full
+#  GPU build (default via docker-compose):
+#    docker compose up --build
+#
+#  CPU-only build:
+#    docker build --build-arg CUDA=cpu -t meeting-app .
 # ─────────────────────────────────────────────────────────────────────────────
-FROM python:3.11-slim
 
-ARG MODE=slim
+ARG CUDA=cu121
+
+# Use CUDA base image for GPU support
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ARG MODE=full
+ARG CUDA=cu121
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV KMP_DUPLICATE_LIB_OK=TRUE
 
 # ── System packages ───────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-dev \
+        python3-pip \
         ffmpeg \
         gcc \
         g++ \
@@ -18,25 +32,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsndfile-dev \
         git \
         curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf python3.11 /usr/bin/python3 \
+    && ln -sf python3 /usr/bin/python
 
 WORKDIR /app
 
 # ── Python deps ───────────────────────────────────────────────────────────────
-COPY requirements.txt requirements.slim.txt requirements_meeting.txt ./
+COPY requirements.txt requirements_meeting.txt ./
 
-# PyTorch CPU-only — prevents pulling the 2.5 GB CUDA wheel
+# Install PyTorch with CUDA support
 RUN pip install --no-cache-dir \
-        torch==2.2.2 \
-        torchaudio==2.2.2 \
-        --index-url https://download.pytorch.org/whl/cpu
+        torch==2.5.1+cu121 \
+        torchvision==0.20.1+cu121 \
+        torchaudio==2.5.1 \
+        --extra-index-url https://download.pytorch.org/whl/cu121
 
-# Install slim or full requirements depending on MODE build arg
-RUN if [ "$MODE" = "full" ]; then \
-        pip install --no-cache-dir -r requirements.txt; \
-    else \
-        pip install --no-cache-dir -r requirements.slim.txt; \
-    fi
+RUN pip install --no-cache-dir -r requirements.txt -r requirements_meeting.txt
 
 # ── App code ──────────────────────────────────────────────────────────────────
 COPY . .
@@ -48,6 +60,6 @@ EXPOSE 8000
 
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
-     "--port", "8096", \
+     "--port", "8000", \
      "--workers", "1", \
      "--timeout-keep-alive", "300"]

@@ -1,59 +1,117 @@
-version: "3.9"
-
 # ─────────────────────────────────────────────────────────────────────────────
-#  docker compose up --build
-#  No .env file needed for basic usage (video upload + transcription).
+#  Technodysis Meeting Assistant — Full GPU Stack
+#
+#  Quick start (Windows PowerShell):
+#    .\setup.ps1
+#
+#  Manual start (after .env is configured):
+#    docker compose up --build
+#
+#  Services:
+#    app       → FastAPI server     http://localhost:8000
+#    ollama    → LLM inference      http://localhost:11434
+#    postgres  → Database           localhost:5432
+#    minio     → Object storage     http://localhost:9000  (console: 9001)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: meeting_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: meetuser
+      POSTGRES_PASSWORD: meetpass
+      POSTGRES_DB: meetingdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meetuser -d meetingdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: meeting_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: meeting_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8096:8096"
-    volumes:
-      # Uploaded videos are cleaned up after transcription, but persist across restarts
-      - ./uploads:/app/uploads
-      # Whisper model cache — downloaded once, reused on restart
-      - whisper_cache:/root/.cache/huggingface
-      # App logs
-      - ./logs:/app/logs
-      # Knowledge base and FAISS index for the voice assistant
-      - ./data:/app/data
-    environment:
-      # Whisper model size: tiny (fastest) | base | small | medium | large-v2
-      STT_MODEL_NAME:    base
-      WHISPER_MODEL_SIZE: base
-      WHISPER_DEVICE:    cpu
-      # Set to your language code, e.g. "en", "hi", "fr" — or leave blank for auto-detect
-      STT_LANGUAGE:      en
-      WHISPER_LANGUAGE:  en
+      args:
+        MODE: full
+    container_name: meeting_app
     restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL:       postgresql+asyncpg://meetuser:meetpass@postgres:5432/meetingdb
+      MINIO_ENDPOINT:     http://minio:9000
+      OLLAMA_BASE_URL:    http://ollama:11434
+      WHISPER_DEVICE:     cuda
+      STT_DEVICE:         cuda
+      STT_COMPUTE_TYPE:   float16
+      TTS_DEVICE:         cuda
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - whisper_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 
 volumes:
+  postgres_data:
+  minio_data:
+  ollama_data:
   whisper_cache:
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  OPTIONAL: add Ollama for the voice assistant LLM feature.
-#  Uncomment the block below and add to the app's depends_on if you need it.
-# ─────────────────────────────────────────────────────────────────────────────
-#
-#  ollama:
-#    image: ollama/ollama:latest
-#    ports:
-#      - "11434:11434"
-#    volumes:
-#      - ollama_models:/root/.ollama
-#    restart: unless-stopped
-#
-#  (also add to volumes: section)
-#  ollama_models:
-#
-# ─────────────────────────────────────────────────────────────────────────────
-#  OPTIONAL: full Teams Meeting Assistant stack (needs .env with credentials).
-#  See docker-compose.full.yml
-# ─────────────────────────────────────────────────────────────────────────────
