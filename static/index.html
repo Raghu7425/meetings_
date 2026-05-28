@@ -3,16 +3,16 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Meeting Transcriber</title>
+<title>Meeting Intelligence</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#060a12;--card:#0c1220;--card2:#101828;
+  --bg:#060a12;--card:#0c1220;--card2:#101828;--card3:#0e1623;
   --border:#1a2540;--border2:#223060;
   --accent:#4f7ef8;--teal:#14b8a6;--green:#10b981;
-  --rose:#f43f5e;--amber:#f59e0b;--violet:#8b5cf6;
-  --text:#e1e8f5;--mid:#8899bb;--dim:#3d506e;
+  --rose:#f43f5e;--amber:#f59e0b;--violet:#8b5cf6;--indigo:#6366f1;
+  --text:#e1e8f5;--mid:#8899bb;--dim:#3d506e;--faint:#1e2f48;
   --font:'Inter',sans-serif;--r:16px;--rs:10px;
 }
 html{scroll-behavior:smooth}
@@ -22,10 +22,7 @@ body{
   padding:0 16px 60px;-webkit-font-smoothing:antialiased;
 }
 
-.header{
-  width:100%;max-width:680px;padding:32px 0 24px;margin-bottom:24px;
-  display:flex;align-items:center;gap:14px;
-}
+.header{width:100%;max-width:700px;padding:32px 0 24px;margin-bottom:24px;display:flex;align-items:center;gap:14px}
 .header-icon{
   width:42px;height:42px;border-radius:11px;flex-shrink:0;
   background:linear-gradient(135deg,var(--accent),var(--violet));
@@ -35,25 +32,21 @@ body{
 .header-text h1{font-size:1.1rem;font-weight:700;color:var(--text)}
 .header-text p{font-size:.68rem;color:var(--dim);margin-top:3px;letter-spacing:.02em}
 
-.container{width:100%;max-width:680px;display:flex;flex-direction:column;gap:16px}
+.container{width:100%;max-width:700px;display:flex;flex-direction:column;gap:16px}
 
-/* ── Panel ── */
-.panel{
-  background:var(--card);border:1px solid var(--border);
-  border-radius:var(--r);overflow:hidden;
-}
+/* Panel */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
 .panel-head{
   padding:14px 20px;border-bottom:1px solid var(--border);
   display:flex;align-items:center;justify-content:space-between;
 }
 .panel-title{
-  font-size:.66rem;font-weight:700;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--mid);
-  display:flex;align-items:center;gap:7px;
+  font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mid);display:flex;align-items:center;gap:7px;
 }
 .panel-body{padding:20px}
 
-/* ── Drop zone ── */
+/* Drop zone */
 .drop-zone{
   border:2px dashed var(--border2);border-radius:var(--rs);
   padding:38px 20px;text-align:center;cursor:pointer;
@@ -67,9 +60,8 @@ body{
 
 .file-bar{
   display:none;align-items:center;gap:10px;margin-top:11px;
-  padding:8px 12px;
-  background:rgba(20,184,166,.07);border:1px solid rgba(20,184,166,.2);
-  border-radius:var(--rs);
+  padding:8px 12px;background:rgba(20,184,166,.07);
+  border:1px solid rgba(20,184,166,.2);border-radius:var(--rs);
 }
 .file-bar.show{display:flex}
 .file-name{font-size:.74rem;color:var(--teal);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -84,22 +76,15 @@ body{
 }
 .error-wrap.show{display:block}
 
-/* ── Progress (inline) ── */
+/* Progress */
 .progress-inline{display:none;margin-top:16px}
 .progress-inline.show{display:block}
 .progress-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .progress-label{font-size:.77rem;font-weight:600;color:var(--text)}
 .progress-pct{font-size:.77rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
 .progress-track{height:5px;background:var(--border2);border-radius:3px;overflow:hidden}
-.progress-fill{
-  height:100%;width:0%;
-  background:linear-gradient(90deg,var(--teal),var(--accent));
-  border-radius:3px;transition:width .5s ease;
-}
-.progress-sub{
-  margin-top:7px;font-size:.6rem;color:var(--dim);
-  letter-spacing:.06em;text-transform:uppercase;text-align:center;
-}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--accent));border-radius:3px;transition:width .5s ease}
+.progress-sub{margin-top:7px;font-size:.6rem;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;text-align:center}
 
 .btn-primary{
   width:100%;margin-top:13px;padding:11px;
@@ -111,11 +96,8 @@ body{
 .btn-primary:hover{opacity:.88}
 .btn-primary:disabled{opacity:.3;cursor:not-allowed}
 
-/* ── Results tabs ── */
-.tab-bar{
-  display:flex;border-bottom:1px solid var(--border);
-  padding:0 4px;gap:0;
-}
+/* Tabs */
+.tab-bar{display:flex;border-bottom:1px solid var(--border);padding:0 4px;gap:0}
 .tab-btn{
   background:none;border:none;border-bottom:2px solid transparent;
   padding:12px 18px;margin-bottom:-1px;
@@ -127,11 +109,7 @@ body{
 .tab-pane{display:none;padding:20px}
 .tab-pane.active{display:block}
 
-/* ── Summary ── */
-.summary-text{
-  font-size:.82rem;line-height:1.95;color:var(--mid);
-  white-space:pre-wrap;word-break:break-word;
-}
+/* Loader */
 .loader{display:flex;align-items:center;gap:9px;font-size:.73rem;color:var(--dim);font-style:italic}
 .dots{display:flex;gap:4px}
 .dots span{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:dl .9s ease infinite}
@@ -139,42 +117,36 @@ body{
 .dots span:nth-child(3){animation-delay:.3s}
 @keyframes dl{0%,100%{opacity:.25}50%{opacity:1}}
 
-/* ── Transcript ── */
-.transcript-header{
-  display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;
-}
+/* Transcript */
+.transcript-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
 .transcript-meta{font-size:.61rem;color:var(--dim)}
 .btn-sm{
   background:transparent;border:1px solid rgba(16,185,129,.35);
   border-radius:5px;padding:4px 11px;
-  color:var(--green);font-family:var(--font);font-size:.61rem;cursor:pointer;
-  transition:background .2s;
+  color:var(--green);font-family:var(--font);font-size:.61rem;cursor:pointer;transition:background .2s;
 }
 .btn-sm:hover{background:rgba(16,185,129,.08)}
 .transcript-box{
-  background:var(--card2);border:1px solid var(--border);
-  border-radius:var(--rs);padding:13px 15px;
-  max-height:340px;overflow-y:auto;
+  background:var(--card2);border:1px solid var(--border);border-radius:var(--rs);
+  padding:13px 15px;max-height:340px;overflow-y:auto;
   font-size:.69rem;line-height:1.85;color:var(--mid);
   font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;
 }
 .transcript-box::-webkit-scrollbar{width:4px}
 .transcript-box::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
-/* ── Q&A ── */
+/* Q&A */
 .qa-row{display:flex;gap:9px;align-items:center}
 .qa-input{
   flex:1;background:var(--card2);border:1px solid var(--border2);
   border-radius:var(--rs);padding:9px 13px;
-  color:var(--text);font-family:var(--font);font-size:.8rem;outline:none;
-  transition:border-color .2s;
+  color:var(--text);font-family:var(--font);font-size:.8rem;outline:none;transition:border-color .2s;
 }
 .qa-input:focus{border-color:var(--accent)}
 .qa-input::placeholder{color:var(--dim)}
 .btn-ask{
   background:var(--accent);border:none;border-radius:var(--rs);
-  padding:9px 18px;color:#fff;
-  font-family:var(--font);font-size:.78rem;font-weight:600;
+  padding:9px 18px;color:#fff;font-family:var(--font);font-size:.78rem;font-weight:600;
   cursor:pointer;transition:opacity .2s;white-space:nowrap;flex-shrink:0;
 }
 .btn-ask:hover{opacity:.85}
@@ -190,24 +162,246 @@ body{
 .qa-thinking{color:var(--dim);font-style:italic}
 
 .btn-ghost{
-  background:transparent;border:1px solid var(--border2);
-  border-radius:var(--rs);padding:10px;
+  background:transparent;border:1px solid var(--border2);border-radius:var(--rs);padding:10px;
   color:var(--mid);font-family:var(--font);font-size:.77rem;font-weight:500;
   cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.02em;width:100%;
 }
 .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
 
 .hidden{display:none!important}
+
+/* ══════════════════════════════════════════════════════════
+   STRUCTURED INTELLIGENCE STYLES
+══════════════════════════════════════════════════════════ */
+
+/* Meeting header */
+.meet-header{
+  background:linear-gradient(135deg,rgba(79,126,248,.08),rgba(139,92,246,.06));
+  border:1px solid rgba(79,126,248,.18);
+  border-radius:var(--rs);padding:16px 18px;margin-bottom:18px;
+}
+.meet-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:8px;line-height:1.3}
+.meet-meta-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.meet-meta-chip{
+  display:flex;align-items:center;gap:5px;
+  font-size:.62rem;color:var(--mid);letter-spacing:.02em;
+}
+.meet-meta-chip svg{opacity:.6}
+.sent-dot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;
+}
+.sent-positive{background:var(--green)}
+.sent-neutral{background:var(--amber)}
+.sent-negative{background:var(--rose)}
+.sent-label{font-size:.62rem;font-weight:600;text-transform:capitalize}
+.sent-positive-label{color:var(--green)}
+.sent-neutral-label{color:var(--amber)}
+.sent-negative-label{color:var(--rose)}
+
+/* Tags row */
+.tags-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag-chip{
+  font-size:.6rem;font-weight:600;letter-spacing:.04em;
+  padding:3px 9px;border-radius:20px;
+  background:rgba(79,126,248,.1);color:var(--accent);
+  border:1px solid rgba(79,126,248,.2);
+}
+
+/* Metrics row */
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+@media(max-width:480px){.metrics-row{grid-template-columns:repeat(2,1fr)}}
+.metric-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:var(--rs);padding:12px 14px;text-align:center;
+}
+.metric-num{font-size:1.4rem;font-weight:700;line-height:1;margin-bottom:3px}
+.metric-label{font-size:.6rem;color:var(--dim);letter-spacing:.05em;text-transform:uppercase}
+.metric-actions .metric-num{color:var(--accent)}
+.metric-decisions .metric-num{color:var(--teal)}
+.metric-risks .metric-num{color:var(--rose)}
+.metric-people .metric-num{color:var(--violet)}
+
+/* Section */
+.sec{margin-bottom:20px}
+.sec:last-child{margin-bottom:0}
+.sec-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:11px;
+}
+.sec-title{
+  font-size:.63rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mid);display:flex;align-items:center;gap:6px;
+}
+.sec-count{
+  font-size:.6rem;font-weight:600;padding:2px 7px;border-radius:20px;
+  background:var(--faint);color:var(--dim);
+}
+
+/* Summary text */
+.summary-body{font-size:.82rem;line-height:1.95;color:var(--mid)}
+
+/* Action items */
+.ai-list{display:flex;flex-direction:column;gap:8px}
+.ai-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:var(--rs);padding:11px 14px;
+  display:flex;flex-direction:column;gap:7px;
+}
+.ai-top{display:flex;align-items:flex-start;gap:9px}
+.priority-tag{
+  font-size:.56rem;font-weight:700;letter-spacing:.08em;
+  padding:3px 7px;border-radius:4px;flex-shrink:0;margin-top:1px;
+  text-transform:uppercase;
+}
+.p-high{background:rgba(244,63,94,.12);color:var(--rose);border:1px solid rgba(244,63,94,.25)}
+.p-medium{background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.25)}
+.p-low{background:rgba(16,185,129,.08);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+.ai-task{font-size:.79rem;color:var(--text);line-height:1.45;font-weight:500}
+.ai-bottom{display:flex;align-items:center;flex-wrap:wrap;gap:7px}
+.owner-chip{
+  font-size:.62rem;padding:2px 9px;border-radius:20px;
+  background:rgba(139,92,246,.1);color:var(--violet);
+  border:1px solid rgba(139,92,246,.2);font-weight:500;
+}
+.deadline-chip{
+  font-size:.62rem;padding:2px 9px;border-radius:20px;
+  background:rgba(20,184,166,.08);color:var(--teal);
+  border:1px solid rgba(20,184,166,.2);
+}
+.deadline-past{background:rgba(244,63,94,.08);color:var(--rose);border-color:rgba(244,63,94,.2)}
+.conf-hint{font-size:.59rem;color:var(--dim);margin-left:auto}
+
+/* Decisions */
+.dec-list{display:flex;flex-direction:column;gap:8px}
+.dec-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:var(--rs);padding:11px 14px;
+}
+.dec-text{font-size:.79rem;color:var(--text);font-weight:500;margin-bottom:4px}
+.dec-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px}
+.dec-approver{font-size:.62rem;color:var(--mid)}
+.dec-conf{font-size:.59rem;color:var(--dim)}
+.dec-evidence{
+  margin-top:8px;padding:7px 10px;
+  background:rgba(79,126,248,.05);border:1px solid rgba(79,126,248,.12);
+  border-radius:6px;font-size:.7rem;color:var(--dim);
+  font-style:italic;line-height:1.5;
+}
+.dec-evidence::before{content:'"';margin-right:2px;color:var(--accent);font-style:normal;font-size:.85rem}
+.dec-evidence::after{content:'"';margin-left:2px;color:var(--accent);font-style:normal;font-size:.85rem}
+
+/* Two-col grid */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:480px){.two-col{grid-template-columns:1fr}}
+
+/* Participants */
+.part-list{display:flex;flex-wrap:wrap;gap:7px}
+.part-chip{
+  display:flex;align-items:center;gap:6px;
+  font-size:.68rem;padding:5px 10px;border-radius:20px;
+  background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.18);color:var(--text);
+}
+.part-avatar{
+  width:20px;height:20px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--violet),var(--indigo));
+  font-size:.62rem;font-weight:700;color:#fff;
+}
+.part-role{font-size:.58rem;color:var(--dim);margin-left:2px}
+
+/* Topics */
+.topic-list{display:flex;flex-wrap:wrap;gap:6px}
+.topic-chip{
+  font-size:.63rem;padding:4px 10px;border-radius:6px;font-weight:500;
+}
+.t-high{background:rgba(244,63,94,.09);color:#fda4af;border:1px solid rgba(244,63,94,.2)}
+.t-medium{background:rgba(245,158,11,.08);color:#fcd34d;border:1px solid rgba(245,158,11,.2)}
+.t-low{background:rgba(16,185,129,.07);color:var(--green);border:1px solid rgba(16,185,129,.18)}
+
+/* Risks */
+.risk-list{display:flex;flex-direction:column;gap:8px}
+.risk-card{
+  background:var(--card2);border:1px solid rgba(244,63,94,.18);
+  border-left:3px solid var(--rose);border-radius:var(--rs);padding:10px 14px;
+}
+.risk-card.sev-medium{border-color:rgba(245,158,11,.18);border-left-color:var(--amber)}
+.risk-card.sev-low{border-color:rgba(16,185,129,.15);border-left-color:var(--green)}
+.risk-top{display:flex;align-items:flex-start;gap:9px}
+.sev-tag{
+  font-size:.56rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 7px;border-radius:4px;flex-shrink:0;margin-top:1px;
+}
+.sev-high{background:rgba(244,63,94,.12);color:var(--rose)}
+.sev-medium{background:rgba(245,158,11,.1);color:var(--amber)}
+.sev-low{background:rgba(16,185,129,.08);color:var(--green)}
+.risk-text{font-size:.78rem;color:var(--text);line-height:1.4}
+.risk-reason{font-size:.67rem;color:var(--mid);margin-top:4px;line-height:1.5}
+
+/* Next meeting */
+.next-meet-card{
+  background:var(--card2);border:1px solid rgba(20,184,166,.2);
+  border-radius:var(--rs);padding:13px 16px;
+}
+.next-meet-date{font-size:.85rem;font-weight:700;color:var(--teal);margin-bottom:8px}
+.next-agenda{display:flex;flex-direction:column;gap:5px}
+.next-agenda-item{font-size:.73rem;color:var(--mid);display:flex;align-items:flex-start;gap:7px}
+.next-agenda-item::before{content:'›';color:var(--teal);flex-shrink:0}
+
+/* Extras toggle */
+.extras-toggle{
+  display:flex;align-items:center;gap:8px;
+  font-size:.68rem;font-weight:600;color:var(--dim);
+  cursor:pointer;padding:8px 0;border:none;background:none;
+  font-family:var(--font);transition:color .15s;
+  letter-spacing:.04em;text-transform:uppercase;
+}
+.extras-toggle:hover{color:var(--mid)}
+.extras-toggle .chevron{font-size:.7rem;transition:transform .2s}
+.extras-toggle.open .chevron{transform:rotate(180deg)}
+.extras-body{display:none;margin-top:12px}
+.extras-body.open{display:block}
+
+/* Quotes */
+.quote-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-left:3px solid var(--violet);border-radius:var(--rs);
+  padding:10px 14px;margin-bottom:8px;
+}
+.quote-speaker{font-size:.62rem;font-weight:700;color:var(--violet);margin-bottom:4px;letter-spacing:.04em;text-transform:uppercase}
+.quote-text{font-size:.76rem;color:var(--mid);font-style:italic;line-height:1.55}
+
+/* Entities */
+.entity-section{margin-bottom:12px}
+.entity-label{font-size:.6rem;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.entity-chips{display:flex;flex-wrap:wrap;gap:5px}
+.entity-chip{
+  font-size:.63rem;padding:3px 9px;border-radius:20px;
+  background:var(--faint);color:var(--mid);border:1px solid var(--border);
+}
+
+/* Followups */
+.followup-list{display:flex;flex-direction:column;gap:7px}
+.followup-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-left:3px solid var(--teal);border-radius:var(--rs);padding:10px 14px;
+}
+.followup-type{font-size:.57rem;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px}
+.followup-action{font-size:.76rem;color:var(--text)}
+.followup-meta{font-size:.63rem;color:var(--dim);margin-top:3px}
+
+/* Divider */
+.sec-divider{border:none;border-top:1px solid var(--border);margin:18px 0}
 </style>
 </head>
 
 <body>
 
 <header class="header">
-  <div class="header-icon">🎬</div>
+  <div class="header-icon">🎙</div>
   <div class="header-text">
-    <h1>Meeting Transcriber</h1>
-    <p>Upload a recording · get transcript, summary &amp; Q&amp;A</p>
+    <h1>Meeting Intelligence</h1>
+    <p>Upload a recording · get AI-extracted insights, transcript &amp; Q&amp;A</p>
   </div>
 </header>
 
@@ -244,10 +438,10 @@ body{
     </div>
   </div>
 
-  <!-- Results panel (tabs) -->
+  <!-- Results panel -->
   <div class="panel hidden" id="resultsPanel">
     <div class="tab-bar">
-      <button class="tab-btn active" data-tab="summary">📋 Summary</button>
+      <button class="tab-btn active" data-tab="summary">✦ Intelligence</button>
       <button class="tab-btn" data-tab="transcript">📝 Transcript</button>
       <button class="tab-btn" data-tab="qa">💬 Ask</button>
     </div>
@@ -256,7 +450,7 @@ body{
       <div id="summaryContent">
         <div class="loader">
           <div class="dots"><span></span><span></span><span></span></div>
-          Generating summary…
+          Extracting insights…
         </div>
       </div>
     </div>
@@ -326,28 +520,31 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function fmtSize(b) {
   if (b >= 1e9) return (b/1e9).toFixed(1)+' GB';
   if (b >= 1e6) return (b/1e6).toFixed(1)+' MB';
   return (b/1e3).toFixed(0)+' KB';
 }
-function showError(msg) {
-  errorWrap.textContent = '⚠ ' + msg;
-  errorWrap.classList.add('show');
+function fmtDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  } catch { return iso; }
 }
-function hideError() {
-  errorWrap.classList.remove('show');
-  errorWrap.textContent = '';
+function isDeadlinePast(iso) {
+  if (!iso) return false;
+  try { return new Date(iso) < new Date(); } catch { return false; }
 }
+function showError(msg) { errorWrap.textContent='⚠ '+msg; errorWrap.classList.add('show'); }
+function hideError() { errorWrap.classList.remove('show'); errorWrap.textContent=''; }
 function setProgress(pct, label, sub) {
   progressFill.style.width = pct + '%';
   progressPct.textContent  = pct + '%';
   if (label !== undefined) progressLabel.textContent = label;
   if (sub   !== undefined) progressSub.textContent   = sub;
 }
-
 function selectFile(file) {
   selectedFile = file;
   fileNameEl.textContent = file.name;
@@ -357,10 +554,8 @@ function selectFile(file) {
   hideError();
 }
 function clearFile() {
-  selectedFile = null;
-  fileInput.value = '';
-  fileBar.classList.remove('show');
-  uploadBtn.disabled = true;
+  selectedFile = null; fileInput.value = '';
+  fileBar.classList.remove('show'); uploadBtn.disabled = true;
 }
 
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) selectFile(fileInput.files[0]); });
@@ -374,20 +569,17 @@ dropZone.addEventListener('drop', e => {
 
 const STAGE = {
   uploading:'Uploading file…', extracting_audio:'Extracting audio…',
-  transcribing:'Transcribing speech…', summarizing:'Generating AI summary…',
+  transcribing:'Transcribing speech…', summarizing:'Extracting AI insights…',
   done:'Done!', failed:'Failed',
 };
 
 uploadBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
-  uploadBtn.disabled = true;
-  hideError();
+  uploadBtn.disabled = true; hideError();
   progressWrap.classList.add('show');
   setProgress(0, 'Uploading file…', '');
-
   const fd = new FormData();
   fd.append('file', selectedFile);
-
   let jobId;
   try {
     jobId = await new Promise((resolve, reject) => {
@@ -400,21 +592,15 @@ uploadBtn.addEventListener('click', async () => {
         if (xhr.status === 200) resolve(JSON.parse(xhr.responseText).job_id);
         else { try { reject(new Error(JSON.parse(xhr.responseText).detail)); } catch { reject(new Error('HTTP '+xhr.status)); } }
       };
-      xhr.onerror   = () => reject(new Error('Network error'));
-      xhr.ontimeout = () => reject(new Error('Request timed out'));
-      xhr.timeout   = 0;
-      xhr.send(fd);
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.timeout = 0; xhr.send(fd);
     });
   } catch (e) {
     showError('Upload failed: ' + e.message);
-    uploadBtn.disabled = false;
-    progressWrap.classList.remove('show');
-    return;
+    uploadBtn.disabled = false; progressWrap.classList.remove('show'); return;
   }
-
   currentJobId = jobId;
   setProgress(35, 'Processing…', 'Upload complete');
-
   pollTimer = setInterval(async () => {
     try {
       const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
@@ -422,9 +608,7 @@ uploadBtn.addEventListener('click', async () => {
       if (data.status === 'failed') {
         clearInterval(pollTimer);
         showError(data.error || 'Transcription failed.');
-        progressWrap.classList.remove('show');
-        uploadBtn.disabled = false;
-        return;
+        progressWrap.classList.remove('show'); uploadBtn.disabled = false; return;
       }
       const pct =
         data.status === 'uploading'        ? 35 :
@@ -438,17 +622,22 @@ uploadBtn.addEventListener('click', async () => {
   }, 2500);
 });
 
+/* ═══════════════════════════════════════════════════════════
+   ON DONE
+═══════════════════════════════════════════════════════════ */
 async function onDone(jobId, statusData) {
   setProgress(100, 'Complete!');
   setTimeout(() => progressWrap.classList.remove('show'), 1800);
-
   resultsPanel.classList.remove('hidden');
   newUploadBtn.classList.remove('hidden');
 
-  if (statusData.summary) {
-    summaryContent.innerHTML = `<div class="summary-text">${esc(statusData.summary)}</div>`;
+  if (statusData.structured_data) {
+    summaryContent.innerHTML = renderIntelligence(statusData.structured_data);
+    wireExtrasToggles();
+  } else if (statusData.summary) {
+    summaryContent.innerHTML = `<div style="font-size:.82rem;line-height:1.95;color:var(--mid)">${esc(statusData.summary)}</div>`;
   } else {
-    summaryContent.innerHTML = `<div class="summary-text" style="color:var(--dim);font-style:italic">Summary unavailable.</div>`;
+    summaryContent.innerHTML = `<div style="font-size:.82rem;color:var(--dim);font-style:italic">Summary unavailable.</div>`;
   }
 
   try {
@@ -460,17 +649,266 @@ async function onDone(jobId, statusData) {
     transcriptMeta.textContent = `${lines} lines · ~${words.toLocaleString()} words`;
     downloadBtn.onclick = () => {
       const a = document.createElement('a');
-      a.href  = URL.createObjectURL(new Blob([transcriptText],{type:'text/plain'}));
+      a.href = URL.createObjectURL(new Blob([transcriptText],{type:'text/plain'}));
       a.download = (selectedFile?.name||'meeting').replace(/\.[^.]+$/,'')+'_transcript.txt';
       a.click(); URL.revokeObjectURL(a.href);
     };
-  } catch (e) {
-    transcriptBox.textContent = 'Could not load transcript: ' + e.message;
-  }
+  } catch (e) { transcriptBox.textContent = 'Could not load transcript: ' + e.message; }
 
   resultsPanel.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
+/* ═══════════════════════════════════════════════════════════
+   STRUCTURED INTELLIGENCE RENDERER
+═══════════════════════════════════════════════════════════ */
+function renderIntelligence(d) {
+  const meta   = d.meeting_metadata || {};
+  const summ   = d.summary          || {};
+  const people = d.participants      || [];
+  const topics = d.topics_discussed  || [];
+  const decs   = d.decisions         || [];
+  const items  = d.action_items      || [];
+  const risks  = d.risks_blockers    || [];
+  const next   = d.next_meeting      || {};
+  const sent   = d.sentiment         || {};
+  const tags   = d.tags              || [];
+  const quotes = d.quotes            || [];
+  const fups   = d.followups         || [];
+  const ents   = d.raw_extracted_entities || {};
+  const metrics= d.metrics           || {};
+
+  let html = '';
+
+  /* ── Meeting header ── */
+  const sentClass = sent.overall_sentiment === 'positive' ? 'positive'
+                  : sent.overall_sentiment === 'negative' ? 'negative' : 'neutral';
+  html += `<div class="meet-header">`;
+  html += `<div class="meet-title">${esc(meta.meeting_title || 'Meeting Summary')}</div>`;
+  html += `<div class="meet-meta-row">`;
+  if (meta.duration_minutes) {
+    html += `<span class="meet-meta-chip">⏱ ${meta.duration_minutes} min</span>`;
+  }
+  if (meta.platform && meta.platform !== 'Unknown') {
+    html += `<span class="meet-meta-chip">📡 ${esc(meta.platform)}</span>`;
+  }
+  if (sent.overall_sentiment) {
+    html += `<span class="meet-meta-chip"><span class="sent-dot sent-${sentClass}"></span><span class="sent-label sent-${sentClass}-label">${esc(sent.overall_sentiment)}</span></span>`;
+  }
+  if (sent.engagement_score) {
+    html += `<span class="meet-meta-chip">⚡ ${Math.round(sent.engagement_score*100)}% engaged</span>`;
+  }
+  html += `</div>`;
+  if (tags.length) {
+    html += `<div class="tags-row">` + tags.slice(0,8).map(t=>`<span class="tag-chip">${esc(t)}</span>`).join('') + `</div>`;
+  }
+  html += `</div>`;
+
+  /* ── Metrics row ── */
+  const totalRisks = risks.length;
+  const totalPeople= people.length;
+  if (items.length || decs.length || totalRisks || totalPeople) {
+    html += `<div class="metrics-row">`;
+    html += `<div class="metric-card metric-actions"><div class="metric-num">${metrics.total_action_items||items.length}</div><div class="metric-label">Action Items</div></div>`;
+    html += `<div class="metric-card metric-decisions"><div class="metric-num">${metrics.total_decisions||decs.length}</div><div class="metric-label">Decisions</div></div>`;
+    html += `<div class="metric-card metric-risks"><div class="metric-num">${totalRisks}</div><div class="metric-label">Risks</div></div>`;
+    html += `<div class="metric-card metric-people"><div class="metric-num">${totalPeople}</div><div class="metric-label">Participants</div></div>`;
+    html += `</div>`;
+  }
+
+  /* ── Summary ── */
+  const summText = summ.detailed_summary || summ.short_summary || '';
+  if (summText) {
+    html += `<div class="sec">`;
+    html += `<div class="sec-head"><span class="sec-title">📋 Summary</span></div>`;
+    html += `<div class="summary-body">${esc(summText)}</div>`;
+    html += `</div>`;
+  }
+
+  /* ── Action Items ── */
+  if (items.length) {
+    html += `<div class="sec">`;
+    html += `<div class="sec-head"><span class="sec-title">✅ Action Items</span><span class="sec-count">${items.length}</span></div>`;
+    html += `<div class="ai-list">`;
+    items.forEach(ai => {
+      const p = (ai.priority||'medium').toLowerCase();
+      const pClass = p==='high'?'p-high':p==='low'?'p-low':'p-medium';
+      const deadlinePast = isDeadlinePast(ai.deadline);
+      html += `<div class="ai-card">`;
+      html += `<div class="ai-top"><span class="priority-tag ${pClass}">${p}</span><span class="ai-task">${esc(ai.task)}</span></div>`;
+      html += `<div class="ai-bottom">`;
+      if (ai.owner && ai.owner !== 'Unassigned') {
+        html += `<span class="owner-chip">👤 ${esc(ai.owner)}</span>`;
+      }
+      if (ai.deadline) {
+        html += `<span class="deadline-chip ${deadlinePast?'deadline-past':''}">📅 ${fmtDate(ai.deadline)||esc(ai.deadline)}</span>`;
+      }
+      if (ai.confidence && ai.confidence < 0.75) {
+        html += `<span class="conf-hint">~${Math.round(ai.confidence*100)}% confidence</span>`;
+      }
+      html += `</div>`;
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  /* ── Decisions ── */
+  if (decs.length) {
+    html += `<div class="sec">`;
+    html += `<div class="sec-head"><span class="sec-title">⚖ Decisions</span><span class="sec-count">${decs.length}</span></div>`;
+    html += `<div class="dec-list">`;
+    decs.forEach(dec => {
+      html += `<div class="dec-card">`;
+      html += `<div class="dec-text">${esc(dec.decision)}</div>`;
+      html += `<div class="dec-meta">`;
+      if (dec.approved_by && dec.approved_by.length) {
+        html += `<span class="dec-approver">Approved by: ${dec.approved_by.map(esc).join(', ')}</span>`;
+      }
+      if (dec.reason) {
+        html += `<span class="dec-conf">${esc(dec.reason)}</span>`;
+      }
+      if (dec.confidence && dec.confidence < 0.75) {
+        html += `<span class="dec-conf">~${Math.round(dec.confidence*100)}% confidence</span>`;
+      }
+      html += `</div>`;
+      if (dec.evidence && dec.evidence.length > 10) {
+        html += `<div class="dec-evidence">${esc(dec.evidence)}</div>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  /* ── Participants + Topics (two-col) ── */
+  if (people.length || topics.length) {
+    html += `<div class="two-col">`;
+    if (people.length) {
+      html += `<div class="sec">`;
+      html += `<div class="sec-head"><span class="sec-title">👥 Participants</span></div>`;
+      html += `<div class="part-list">`;
+      people.forEach(p => {
+        const initials = (p.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+        html += `<div class="part-chip"><div class="part-avatar">${esc(initials)}</div>${esc(p.name)}`;
+        if (p.role && p.role !== 'Unknown') html += `<span class="part-role">${esc(p.role)}</span>`;
+        html += `</div>`;
+      });
+      html += `</div></div>`;
+    }
+    if (topics.length) {
+      html += `<div class="sec">`;
+      html += `<div class="sec-head"><span class="sec-title">🏷 Topics</span></div>`;
+      html += `<div class="topic-list">`;
+      topics.forEach(t => {
+        const imp = (t.importance||'medium').toLowerCase();
+        const cls = imp==='high'?'t-high':imp==='low'?'t-low':'t-medium';
+        html += `<span class="topic-chip ${cls}">${esc(t.topic)}</span>`;
+      });
+      html += `</div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  /* ── Risks & Blockers ── */
+  if (risks.length) {
+    html += `<div class="sec">`;
+    html += `<div class="sec-head"><span class="sec-title">⚠ Risks &amp; Blockers</span><span class="sec-count">${risks.length}</span></div>`;
+    html += `<div class="risk-list">`;
+    risks.forEach(r => {
+      const sev = (r.severity||'medium').toLowerCase();
+      html += `<div class="risk-card sev-${sev}">`;
+      html += `<div class="risk-top"><span class="sev-tag sev-${sev}">${sev}</span><span class="risk-text">${esc(r.risk)}</span></div>`;
+      if (r.reason) html += `<div class="risk-reason">${esc(r.reason)}</div>`;
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  /* ── Next Meeting ── */
+  if (next.date || (next.agenda && next.agenda.length)) {
+    html += `<div class="sec">`;
+    html += `<div class="sec-head"><span class="sec-title">📅 Next Meeting</span></div>`;
+    html += `<div class="next-meet-card">`;
+    if (next.date) html += `<div class="next-meet-date">${fmtDate(next.date)||esc(next.date)}</div>`;
+    if (next.agenda && next.agenda.length) {
+      html += `<div class="next-agenda">`;
+      next.agenda.forEach(a => { html += `<div class="next-agenda-item">${esc(a)}</div>`; });
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  /* ── Extras (collapsible) ── */
+  const hasExtras = quotes.length || fups.length ||
+    (ents.people||[]).length || (ents.projects||[]).length ||
+    (ents.technologies||[]).length || (ents.clients||[]).length;
+
+  if (hasExtras) {
+    html += `<hr class="sec-divider">`;
+    html += `<button class="extras-toggle" id="extrasToggle">More Details <span class="chevron">▾</span></button>`;
+    html += `<div class="extras-body" id="extrasBody">`;
+
+    if (quotes.length) {
+      html += `<div class="sec" style="margin-bottom:16px">`;
+      html += `<div class="sec-head"><span class="sec-title">💬 Key Quotes</span></div>`;
+      quotes.slice(0,3).forEach(q => {
+        html += `<div class="quote-card"><div class="quote-speaker">${esc(q.speaker||'Unknown')}</div><div class="quote-text">${esc(q.quote)}</div></div>`;
+      });
+      html += `</div>`;
+    }
+
+    if (fups.length) {
+      html += `<div class="sec" style="margin-bottom:16px">`;
+      html += `<div class="sec-head"><span class="sec-title">📨 Follow-ups</span></div>`;
+      html += `<div class="followup-list">`;
+      fups.forEach(f => {
+        html += `<div class="followup-card">`;
+        html += `<div class="followup-type">${esc(f.type||'email')}</div>`;
+        html += `<div class="followup-action">${esc(f.action)}</div>`;
+        const meta = [f.owner&&`by ${f.owner}`, f.target_person&&`→ ${f.target_person}`, f.deadline&&`due ${f.deadline}`].filter(Boolean).join(' · ');
+        if (meta) html += `<div class="followup-meta">${esc(meta)}</div>`;
+        html += `</div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    const entitySections = [
+      {key:'projects', label:'Projects'},
+      {key:'technologies', label:'Technologies'},
+      {key:'clients', label:'Clients / Companies'},
+      {key:'people', label:'People Mentioned'},
+    ];
+    const hasAnyEntity = entitySections.some(s => (ents[s.key]||[]).length > 0);
+    if (hasAnyEntity) {
+      html += `<div class="sec">`;
+      html += `<div class="sec-head"><span class="sec-title">🔍 Extracted Entities</span></div>`;
+      entitySections.forEach(({key, label}) => {
+        const list = ents[key] || [];
+        if (!list.length) return;
+        html += `<div class="entity-section"><div class="entity-label">${label}</div><div class="entity-chips">`;
+        list.forEach(e => { html += `<span class="entity-chip">${esc(e)}</span>`; });
+        html += `</div></div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`; // extras-body
+  }
+
+  return html;
+}
+
+function wireExtrasToggles() {
+  const btn  = document.getElementById('extrasToggle');
+  const body = document.getElementById('extrasBody');
+  if (!btn || !body) return;
+  btn.addEventListener('click', () => {
+    const open = body.classList.toggle('open');
+    btn.classList.toggle('open', open);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Q&A
+═══════════════════════════════════════════════════════════ */
 askBtn.addEventListener('click', sendQuestion);
 questionInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
@@ -479,8 +917,7 @@ questionInput.addEventListener('keydown', e => {
 async function sendQuestion() {
   const q = questionInput.value.trim();
   if (!q || !currentJobId || askBtn.disabled) return;
-  questionInput.value = '';
-  askBtn.disabled = true;
+  questionInput.value = ''; askBtn.disabled = true;
   addBubble('q', q);
   const answerEl = addBubble('a', null, true);
   try {
@@ -497,8 +934,7 @@ async function sendQuestion() {
     textEl.textContent = 'Request failed — try again.';
     textEl.classList.remove('qa-thinking');
   } finally {
-    askBtn.disabled = false;
-    questionInput.focus();
+    askBtn.disabled = false; questionInput.focus();
   }
   answerEl.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
@@ -518,16 +954,13 @@ newUploadBtn.addEventListener('click', () => {
     fetch(`/upload/${encodeURIComponent(currentJobId)}`,{method:'DELETE'}).catch(()=>{});
     currentJobId = null;
   }
-  clearFile();
-  hideError();
-  transcriptText = '';
-  qaHistory.innerHTML = '';
+  clearFile(); hideError();
+  transcriptText = ''; qaHistory.innerHTML = '';
   resultsPanel.classList.add('hidden');
   newUploadBtn.classList.add('hidden');
   progressWrap.classList.remove('show');
   window.scrollTo({top:0,behavior:'smooth'});
 });
 </script>
-
 </body>
 </html>
