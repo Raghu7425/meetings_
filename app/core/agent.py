@@ -44,7 +44,7 @@ from app.config import (BC_COOLDOWN, MAX_CACHE_SIZE, SENTENCE_TRANSFORMER_MODEL,
                         LLM_API_TIMEOUT, LLM_WARMUP_TIMEOUT, LLM_WARMUP_NUM_PREDICT,
                         LLM_STREAM_REQUEST_TIMEOUT, LLM_MAX_GENERATION_TOKENS, LLM_TEMPERATURE,
                         LLM_CONTEXT_WINDOW_TOKENS, LLM_CHAT_HISTORY_LIMIT, CHUNK_SIZE, RETRIEVAL_TOP_K,
-                        FUZZY_MATCH_THRESHOLD, ENTITY_CORRECTIONS, MAX_HISTORY_TURNS, INPUT_DIR,
+                        FUZZY_MATCH_THRESHOLD, ENTITY_CORRECTIONS, MAX_HISTORY_TURNS, MEETINGS_INPUT_DIR,
                         FAISS_INDEX_DIR, CHUNKS_NPY_DIR, VECTOR_DB_DIR, OLLAMA_BASE_URL)
 
 
@@ -183,10 +183,10 @@ def _read_pdf(file_path: str) -> str:
 
 
 def load_knowledge_base_data() -> str:
-    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(MEETINGS_INPUT_DIR, exist_ok=True)
     all_text = ""
 
-    for root, dirs, files in os.walk(INPUT_DIR):
+    for root, dirs, files in os.walk(MEETINGS_INPUT_DIR):
         dirs.sort()
         for filename in sorted(files):
             file_path = os.path.join(root, filename)
@@ -210,11 +210,11 @@ def load_knowledge_base_data() -> str:
 
 
 def _input_files_changed() -> bool:
-    """True if any file under INPUT_DIR is newer than the cached FAISS index."""
+    """True if any file under MEETINGS_INPUT_DIR is newer than the cached FAISS index."""
     if not os.path.exists(FAISS_INDEX_DIR):
         return True
     index_mtime = os.path.getmtime(FAISS_INDEX_DIR)
-    for root, _, files in os.walk(INPUT_DIR):
+    for root, _, files in os.walk(MEETINGS_INPUT_DIR):
         for fname in files:
             if os.path.getmtime(os.path.join(root, fname)) > index_mtime:
                 return True
@@ -223,7 +223,7 @@ def _input_files_changed() -> bool:
 
 def vector_database():
     os.makedirs(VECTOR_DB_DIR, exist_ok=True)
-    os.makedirs(INPUT_DIR, exist_ok=True)
+    os.makedirs(MEETINGS_INPUT_DIR, exist_ok=True)
 
     if (os.path.exists(FAISS_INDEX_DIR) and os.path.exists(CHUNKS_NPY_DIR)
             and not _input_files_changed()):

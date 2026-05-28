@@ -32,7 +32,7 @@ DATA_DIR           = os.path.join(_BASE, "data")
 INPUT_DIR          = os.path.join(DATA_DIR, "input")
 VECTOR_DB_DIR      = os.path.join(DATA_DIR, "vector_database")
 KNOWLEDGE_BASE_DIR = os.path.join(INPUT_DIR, "knowledge_base.txt")
-FAISS_INDEX_DIR    = os.path.join(VECTOR_DB_DIR, "company_index.faiss")
+FAISS_INDEX_DIR    = os.path.join(VECTOR_DB_DIR, "meetings_index.faiss")
 CHUNKS_NPY_DIR     = os.path.join(VECTOR_DB_DIR, "chunks.npy")
 STATIC_DIR         = os.path.join(_BASE, "static")
 UPLOADS_DIR        = os.path.join(_BASE, "uploads")
@@ -70,7 +70,7 @@ CHUNK_SIZE                 = int(os.getenv("CHUNK_SIZE", "150"))
 RETRIEVAL_TOP_K            = int(os.getenv("RETRIEVAL_TOP_K", "5"))
 FUZZY_MATCH_THRESHOLD      = int(os.getenv("FUZZY_MATCH_THRESHOLD", "80"))
 MAX_HISTORY_TURNS          = int(os.getenv("MAX_HISTORY_TURNS", "20"))
-ENTITY_CORRECTIONS         = {"technodysis": ["technodysi", "technodsis", "technoysis", "technodsy", "technodys"]}
+ENTITY_CORRECTIONS         = {}
 
 
 # Audio pipeline
