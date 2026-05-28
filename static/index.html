@@ -13,189 +13,187 @@
   --accent:#4f7ef8;--teal:#14b8a6;--green:#10b981;
   --rose:#f43f5e;--amber:#f59e0b;--violet:#8b5cf6;
   --text:#e1e8f5;--mid:#8899bb;--dim:#3d506e;
-  --font:'Inter',sans-serif;--r:14px;--rs:8px;
+  --font:'Inter',sans-serif;--r:16px;--rs:10px;
 }
 html{scroll-behavior:smooth}
 body{
   background:var(--bg);color:var(--text);font-family:var(--font);
-  min-height:100vh;display:flex;flex-direction:column;
-  align-items:center;padding:0 16px 80px;
-  -webkit-font-smoothing:antialiased;
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  padding:0 16px 60px;-webkit-font-smoothing:antialiased;
 }
 
-/* ── Header ── */
 .header{
-  width:100%;max-width:740px;
-  padding:28px 0 22px;
-  border-bottom:1px solid var(--border);
-  margin-bottom:32px;
-  display:flex;align-items:center;gap:16px;
+  width:100%;max-width:680px;padding:32px 0 24px;margin-bottom:24px;
+  display:flex;align-items:center;gap:14px;
 }
 .header-icon{
-  width:46px;height:46px;border-radius:12px;flex-shrink:0;
+  width:42px;height:42px;border-radius:11px;flex-shrink:0;
   background:linear-gradient(135deg,var(--accent),var(--violet));
-  display:flex;align-items:center;justify-content:center;font-size:22px;
-  box-shadow:0 0 28px rgba(79,126,248,.3);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+  box-shadow:0 0 22px rgba(79,126,248,.22);
 }
-.header-text h1{font-size:1.22rem;font-weight:700;color:var(--text);line-height:1.2}
-.header-text p{font-size:.72rem;color:var(--dim);margin-top:4px;letter-spacing:.02em}
+.header-text h1{font-size:1.1rem;font-weight:700;color:var(--text)}
+.header-text p{font-size:.68rem;color:var(--dim);margin-top:3px;letter-spacing:.02em}
 
-/* ── Wrap ── */
-.wrap{width:100%;max-width:740px;display:flex;flex-direction:column;gap:22px}
+.container{width:100%;max-width:680px;display:flex;flex-direction:column;gap:16px}
 
-/* ── Card ── */
-.card{
+/* ── Panel ── */
+.panel{
   background:var(--card);border:1px solid var(--border);
   border-radius:var(--r);overflow:hidden;
 }
-.card-head{
-  display:flex;align-items:center;justify-content:space-between;
+.panel-head{
   padding:14px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
 }
-.card-title{
-  font-size:.7rem;font-weight:700;letter-spacing:.1em;
+.panel-title{
+  font-size:.66rem;font-weight:700;letter-spacing:.1em;
   text-transform:uppercase;color:var(--mid);
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:7px;
 }
-.card-body{padding:20px}
+.panel-body{padding:20px}
 
 /* ── Drop zone ── */
 .drop-zone{
   border:2px dashed var(--border2);border-radius:var(--rs);
-  padding:44px 20px;text-align:center;cursor:pointer;
+  padding:38px 20px;text-align:center;cursor:pointer;
   transition:border-color .2s,background .2s;position:relative;
 }
-.drop-zone:hover,.drop-zone.drag{
-  border-color:var(--teal);background:rgba(20,184,166,.04);
-}
-.drop-zone input[type=file]{
-  position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
-}
-.drop-icon{font-size:2.4rem;margin-bottom:12px}
-.drop-title{font-size:.92rem;font-weight:600;color:var(--mid);margin-bottom:6px}
-.drop-hint{font-size:.68rem;color:var(--dim);line-height:1.6}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--teal);background:rgba(20,184,166,.04)}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-icon{font-size:2rem;margin-bottom:10px}
+.drop-title{font-size:.86rem;font-weight:600;color:var(--mid);margin-bottom:4px}
+.drop-hint{font-size:.65rem;color:var(--dim);line-height:1.6}
 
-/* ── File bar ── */
 .file-bar{
-  display:none;align-items:center;gap:10px;margin-top:13px;
-  padding:9px 13px;
+  display:none;align-items:center;gap:10px;margin-top:11px;
+  padding:8px 12px;
   background:rgba(20,184,166,.07);border:1px solid rgba(20,184,166,.2);
   border-radius:var(--rs);
 }
 .file-bar.show{display:flex}
-.file-name{font-size:.76rem;color:var(--teal);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.file-size{font-size:.65rem;color:var(--dim);flex-shrink:0}
-.file-clear{background:none;border:none;color:var(--dim);cursor:pointer;font-size:.95rem;padding:0 2px;line-height:1}
+.file-name{font-size:.74rem;color:var(--teal);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-size{font-size:.63rem;color:var(--dim);flex-shrink:0}
+.file-clear{background:none;border:none;color:var(--dim);cursor:pointer;font-size:.88rem;padding:0 2px}
 .file-clear:hover{color:var(--rose)}
 
-/* ── Primary button ── */
+.error-wrap{
+  display:none;padding:11px 15px;margin-top:12px;
+  background:rgba(244,63,94,.07);border:1px solid rgba(244,63,94,.25);
+  border-radius:var(--rs);font-size:.73rem;color:#fca5a5;line-height:1.65;
+}
+.error-wrap.show{display:block}
+
+/* ── Progress (inline) ── */
+.progress-inline{display:none;margin-top:16px}
+.progress-inline.show{display:block}
+.progress-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.progress-label{font-size:.77rem;font-weight:600;color:var(--text)}
+.progress-pct{font-size:.77rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.progress-track{height:5px;background:var(--border2);border-radius:3px;overflow:hidden}
+.progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,var(--teal),var(--accent));
+  border-radius:3px;transition:width .5s ease;
+}
+.progress-sub{
+  margin-top:7px;font-size:.6rem;color:var(--dim);
+  letter-spacing:.06em;text-transform:uppercase;text-align:center;
+}
+
 .btn-primary{
-  width:100%;margin-top:14px;padding:12px;
+  width:100%;margin-top:13px;padding:11px;
   background:linear-gradient(135deg,var(--accent),#2d52c4);
   border:none;border-radius:var(--rs);
-  color:#fff;font-family:var(--font);font-size:.83rem;font-weight:600;
+  color:#fff;font-family:var(--font);font-size:.81rem;font-weight:600;
   cursor:pointer;transition:opacity .2s;letter-spacing:.03em;
 }
 .btn-primary:hover{opacity:.88}
 .btn-primary:disabled{opacity:.3;cursor:not-allowed}
 
-/* ── Progress ── */
-.progress-wrap{
-  background:var(--card);border:1px solid var(--border);
-  border-radius:var(--r);padding:24px 22px;
+/* ── Results tabs ── */
+.tab-bar{
+  display:flex;border-bottom:1px solid var(--border);
+  padding:0 4px;gap:0;
 }
-.progress-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
-.progress-label{font-size:.82rem;font-weight:600;color:var(--text)}
-.progress-pct{font-size:.82rem;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
-.progress-track{height:8px;background:var(--border2);border-radius:4px;overflow:hidden}
-.progress-fill{
-  height:100%;width:0%;
-  background:linear-gradient(90deg,var(--teal),var(--accent));
-  border-radius:4px;transition:width .5s ease;
+.tab-btn{
+  background:none;border:none;border-bottom:2px solid transparent;
+  padding:12px 18px;margin-bottom:-1px;
+  font-family:var(--font);font-size:.72rem;font-weight:600;
+  color:var(--dim);cursor:pointer;transition:color .15s;letter-spacing:.04em;
 }
-.progress-sub{
-  margin-top:10px;font-size:.65rem;color:var(--dim);
-  letter-spacing:.07em;text-transform:uppercase;text-align:center;
-}
-
-/* ── Error ── */
-.error-wrap{
-  display:none;padding:13px 17px;
-  background:rgba(244,63,94,.07);border:1px solid rgba(244,63,94,.25);
-  border-radius:var(--rs);font-size:.76rem;color:#fca5a5;line-height:1.65;
-}
-.error-wrap.show{display:block}
+.tab-btn:hover{color:var(--mid)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-pane{display:none;padding:20px}
+.tab-pane.active{display:block}
 
 /* ── Summary ── */
 .summary-text{
-  font-size:.83rem;line-height:1.9;color:var(--mid);
+  font-size:.82rem;line-height:1.95;color:var(--mid);
   white-space:pre-wrap;word-break:break-word;
 }
-.loader{display:flex;align-items:center;gap:9px;font-size:.75rem;color:var(--dim);font-style:italic}
+.loader{display:flex;align-items:center;gap:9px;font-size:.73rem;color:var(--dim);font-style:italic}
 .dots{display:flex;gap:4px}
-.dots span{
-  width:5px;height:5px;border-radius:50%;background:var(--accent);
-  animation:dl .9s ease infinite;
-}
+.dots span{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:dl .9s ease infinite}
 .dots span:nth-child(2){animation-delay:.15s}
 .dots span:nth-child(3){animation-delay:.3s}
 @keyframes dl{0%,100%{opacity:.25}50%{opacity:1}}
 
 /* ── Transcript ── */
-.transcript-box{
-  background:var(--card2);border:1px solid var(--border);
-  border-radius:var(--rs);padding:14px 16px;
-  max-height:380px;overflow-y:auto;
-  font-size:.71rem;line-height:1.85;color:var(--mid);
-  font-family:'Courier New',monospace;
-  white-space:pre-wrap;word-break:break-word;
+.transcript-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;
 }
-.transcript-box::-webkit-scrollbar{width:4px}
-.transcript-box::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.transcript-meta{font-size:.62rem;color:var(--dim)}
+.transcript-meta{font-size:.61rem;color:var(--dim)}
 .btn-sm{
   background:transparent;border:1px solid rgba(16,185,129,.35);
-  border-radius:5px;padding:4px 12px;
-  color:var(--green);font-family:var(--font);font-size:.63rem;cursor:pointer;
+  border-radius:5px;padding:4px 11px;
+  color:var(--green);font-family:var(--font);font-size:.61rem;cursor:pointer;
   transition:background .2s;
 }
 .btn-sm:hover{background:rgba(16,185,129,.08)}
+.transcript-box{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:var(--rs);padding:13px 15px;
+  max-height:340px;overflow-y:auto;
+  font-size:.69rem;line-height:1.85;color:var(--mid);
+  font-family:'Courier New',monospace;white-space:pre-wrap;word-break:break-word;
+}
+.transcript-box::-webkit-scrollbar{width:4px}
+.transcript-box::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 
 /* ── Q&A ── */
-.qa-row{display:flex;gap:10px;align-items:center}
+.qa-row{display:flex;gap:9px;align-items:center}
 .qa-input{
   flex:1;background:var(--card2);border:1px solid var(--border2);
-  border-radius:var(--rs);padding:10px 14px;
-  color:var(--text);font-family:var(--font);font-size:.82rem;outline:none;
+  border-radius:var(--rs);padding:9px 13px;
+  color:var(--text);font-family:var(--font);font-size:.8rem;outline:none;
   transition:border-color .2s;
 }
 .qa-input:focus{border-color:var(--accent)}
 .qa-input::placeholder{color:var(--dim)}
 .btn-ask{
   background:var(--accent);border:none;border-radius:var(--rs);
-  padding:10px 22px;color:#fff;
-  font-family:var(--font);font-size:.8rem;font-weight:600;
+  padding:9px 18px;color:#fff;
+  font-family:var(--font);font-size:.78rem;font-weight:600;
   cursor:pointer;transition:opacity .2s;white-space:nowrap;flex-shrink:0;
 }
 .btn-ask:hover{opacity:.85}
 .btn-ask:disabled{opacity:.35;cursor:not-allowed}
-.qa-history{display:flex;flex-direction:column;gap:10px;margin-top:16px}
-.qa-item{border-radius:var(--rs);padding:13px 15px;font-size:.8rem;line-height:1.75}
+.qa-history{display:flex;flex-direction:column;gap:9px;margin-top:14px}
+.qa-item{border-radius:var(--rs);padding:11px 13px;font-size:.78rem;line-height:1.75}
 .qa-q{background:rgba(79,126,248,.07);border-left:3px solid var(--accent)}
 .qa-a{background:rgba(20,184,166,.06);border-left:3px solid var(--teal)}
-.qa-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.qa-label{font-size:.57rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
 .qa-q .qa-label{color:var(--accent)}
 .qa-a .qa-label{color:var(--teal)}
 .qa-text{color:var(--mid);white-space:pre-wrap;word-break:break-word}
 .qa-thinking{color:var(--dim);font-style:italic}
 
-/* ── Ghost button ── */
 .btn-ghost{
-  display:block;width:100%;
   background:transparent;border:1px solid var(--border2);
-  border-radius:var(--rs);padding:11px;
-  color:var(--mid);font-family:var(--font);font-size:.79rem;font-weight:500;
-  cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.02em;
+  border-radius:var(--rs);padding:10px;
+  color:var(--mid);font-family:var(--font);font-size:.77rem;font-weight:500;
+  cursor:pointer;transition:all .2s;text-align:center;letter-spacing:.02em;width:100%;
 }
 .btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
 
@@ -209,55 +207,52 @@ body{
   <div class="header-icon">🎬</div>
   <div class="header-text">
     <h1>Meeting Transcriber</h1>
-    <p>Upload a recording to get a full transcript, AI summary, and Q&amp;A</p>
+    <p>Upload a recording · get transcript, summary &amp; Q&amp;A</p>
   </div>
 </header>
 
-<div class="wrap">
+<div class="container">
 
-  <!-- ── Upload card ── -->
-  <div class="card" id="uploadCard">
-    <div class="card-head">
-      <span class="card-title">📂 Upload Meeting Recording</span>
-      <span style="font-size:.62rem;color:var(--dim)">MP4 · MOV · MKV · WebM · MP3 · WAV</span>
+  <!-- Upload panel -->
+  <div class="panel" id="uploadCard">
+    <div class="panel-head">
+      <span class="panel-title">📂 Upload Recording</span>
+      <span style="font-size:.59rem;color:var(--dim)">MP4 · MOV · MKV · WebM · MP3 · WAV</span>
     </div>
-    <div class="card-body">
+    <div class="panel-body">
       <div class="drop-zone" id="dropZone">
         <input type="file" id="fileInput" accept="video/*,audio/*">
         <div class="drop-icon">📂</div>
         <div class="drop-title">Drop your meeting recording here</div>
-        <div class="drop-hint">or click to browse &nbsp;·&nbsp; any file size supported</div>
+        <div class="drop-hint">or click to browse · any file size supported</div>
       </div>
       <div class="file-bar" id="fileBar">
         <span class="file-name" id="fileName">—</span>
         <span class="file-size" id="fileSize"></span>
-        <button class="file-clear" id="fileClear" title="Remove file">✕</button>
+        <button class="file-clear" id="fileClear" title="Remove">✕</button>
+      </div>
+      <div class="error-wrap" id="errorWrap"></div>
+      <div class="progress-inline" id="progressWrap">
+        <div class="progress-row">
+          <span class="progress-label" id="progressLabel">Processing…</span>
+          <span class="progress-pct" id="progressPct">0%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-sub" id="progressSub"></div>
       </div>
       <button class="btn-primary" id="uploadBtn" disabled>⬆ Upload &amp; Transcribe</button>
     </div>
   </div>
 
-  <!-- ── Error ── -->
-  <div class="error-wrap" id="errorWrap"></div>
+  <!-- Results panel (tabs) -->
+  <div class="panel hidden" id="resultsPanel">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="summary">📋 Summary</button>
+      <button class="tab-btn" data-tab="transcript">📝 Transcript</button>
+      <button class="tab-btn" data-tab="qa">💬 Ask</button>
+    </div>
 
-  <!-- ── Progress ── -->
-  <div class="progress-wrap hidden" id="progressWrap">
-    <div class="progress-row">
-      <span class="progress-label" id="progressLabel">Processing…</span>
-      <span class="progress-pct" id="progressPct">0%</span>
-    </div>
-    <div class="progress-track">
-      <div class="progress-fill" id="progressFill"></div>
-    </div>
-    <div class="progress-sub" id="progressSub"></div>
-  </div>
-
-  <!-- ── Summary card ── -->
-  <div class="card hidden" id="summaryCard">
-    <div class="card-head">
-      <span class="card-title">📋 Meeting Summary</span>
-    </div>
-    <div class="card-body">
+    <div class="tab-pane active" id="tab-summary">
       <div id="summaryContent">
         <div class="loader">
           <div class="dots"><span></span><span></span><span></span></div>
@@ -265,38 +260,25 @@ body{
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- ── Transcript card ── -->
-  <div class="card hidden" id="transcriptCard">
-    <div class="card-head">
-      <span class="card-title">📝 Full Transcript</span>
-      <div style="display:flex;align-items:center;gap:12px">
+    <div class="tab-pane" id="tab-transcript">
+      <div class="transcript-header">
         <span class="transcript-meta" id="transcriptMeta"></span>
         <button class="btn-sm" id="downloadBtn">⬇ Download .txt</button>
       </div>
-    </div>
-    <div class="card-body">
       <div class="transcript-box" id="transcriptBox"></div>
     </div>
-  </div>
 
-  <!-- ── Q&A card ── -->
-  <div class="card hidden" id="qaCard">
-    <div class="card-head">
-      <span class="card-title">💬 Ask About This Meeting</span>
-    </div>
-    <div class="card-body">
+    <div class="tab-pane" id="tab-qa">
       <div class="qa-row">
         <input class="qa-input" type="text" id="questionInput"
-               placeholder="e.g. What were the action items? Who attended? What decisions were made?">
+               placeholder="What were the action items? Who attended?">
         <button class="btn-ask" id="askBtn">Ask</button>
       </div>
       <div class="qa-history" id="qaHistory"></div>
     </div>
   </div>
 
-  <!-- ── New upload ── -->
   <button class="btn-ghost hidden" id="newUploadBtn">⬆ Transcribe Another Meeting</button>
 
 </div>
@@ -304,13 +286,11 @@ body{
 <script>
 'use strict';
 
-// ── State ──────────────────────────────────────────────────────────────────────
 let selectedFile   = null;
 let currentJobId   = null;
 let pollTimer      = null;
 let transcriptText = '';
 
-// ── DOM ────────────────────────────────────────────────────────────────────────
 const uploadCard    = document.getElementById('uploadCard');
 const dropZone      = document.getElementById('dropZone');
 const fileInput     = document.getElementById('fileInput');
@@ -325,40 +305,42 @@ const progressLabel = document.getElementById('progressLabel');
 const progressPct   = document.getElementById('progressPct');
 const progressFill  = document.getElementById('progressFill');
 const progressSub   = document.getElementById('progressSub');
-const summaryCard   = document.getElementById('summaryCard');
+const resultsPanel  = document.getElementById('resultsPanel');
 const summaryContent= document.getElementById('summaryContent');
-const transcriptCard= document.getElementById('transcriptCard');
 const transcriptBox = document.getElementById('transcriptBox');
 const transcriptMeta= document.getElementById('transcriptMeta');
 const downloadBtn   = document.getElementById('downloadBtn');
-const qaCard        = document.getElementById('qaCard');
 const questionInput = document.getElementById('questionInput');
 const askBtn        = document.getElementById('askBtn');
 const qaHistory     = document.getElementById('qaHistory');
 const newUploadBtn  = document.getElementById('newUploadBtn');
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
 function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-
 function fmtSize(b) {
-  if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB';
-  if (b >= 1e6) return (b / 1e6).toFixed(1) + ' MB';
-  return (b / 1e3).toFixed(0) + ' KB';
+  if (b >= 1e9) return (b/1e9).toFixed(1)+' GB';
+  if (b >= 1e6) return (b/1e6).toFixed(1)+' MB';
+  return (b/1e3).toFixed(0)+' KB';
 }
-
 function showError(msg) {
   errorWrap.textContent = '⚠ ' + msg;
   errorWrap.classList.add('show');
 }
-
 function hideError() {
   errorWrap.classList.remove('show');
   errorWrap.textContent = '';
 }
-
 function setProgress(pct, label, sub) {
   progressFill.style.width = pct + '%';
   progressPct.textContent  = pct + '%';
@@ -366,7 +348,6 @@ function setProgress(pct, label, sub) {
   if (sub   !== undefined) progressSub.textContent   = sub;
 }
 
-// ── File selection ─────────────────────────────────────────────────────────────
 function selectFile(file) {
   selectedFile = file;
   fileNameEl.textContent = file.name;
@@ -375,7 +356,6 @@ function selectFile(file) {
   uploadBtn.disabled = false;
   hideError();
 }
-
 function clearFile() {
   selectedFile = null;
   fileInput.value = '';
@@ -383,37 +363,26 @@ function clearFile() {
   uploadBtn.disabled = true;
 }
 
-fileInput.addEventListener('change', () => {
-  if (fileInput.files[0]) selectFile(fileInput.files[0]);
-});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) selectFile(fileInput.files[0]); });
 fileClearBtn.addEventListener('click', clearFile);
-
 dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
 dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag');
-  const f = e.dataTransfer.files[0];
-  if (f) selectFile(f);
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0]; if (f) selectFile(f);
 });
 
-// ── Stage labels ───────────────────────────────────────────────────────────────
 const STAGE = {
-  uploading:        'Uploading file…',
-  extracting_audio: 'Extracting audio…',
-  transcribing:     'Transcribing speech…',
-  summarizing:      'Generating AI summary…',
-  done:             'Done!',
-  failed:           'Failed',
+  uploading:'Uploading file…', extracting_audio:'Extracting audio…',
+  transcribing:'Transcribing speech…', summarizing:'Generating AI summary…',
+  done:'Done!', failed:'Failed',
 };
 
-// ── Upload ─────────────────────────────────────────────────────────────────────
 uploadBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
-
   uploadBtn.disabled = true;
   hideError();
-  progressWrap.classList.remove('hidden');
+  progressWrap.classList.add('show');
   setProgress(0, 'Uploading file…', '');
 
   const fd = new FormData();
@@ -425,16 +394,11 @@ uploadBtn.addEventListener('click', async () => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/upload/transcribe');
       xhr.upload.onprogress = e => {
-        if (e.lengthComputable)
-          setProgress(Math.round((e.loaded / e.total) * 35), 'Uploading file…');
+        if (e.lengthComputable) setProgress(Math.round((e.loaded/e.total)*35), 'Uploading file…');
       };
       xhr.onload = () => {
-        if (xhr.status === 200) {
-          resolve(JSON.parse(xhr.responseText).job_id);
-        } else {
-          try { reject(new Error(JSON.parse(xhr.responseText).detail)); }
-          catch { reject(new Error('HTTP ' + xhr.status)); }
-        }
+        if (xhr.status === 200) resolve(JSON.parse(xhr.responseText).job_id);
+        else { try { reject(new Error(JSON.parse(xhr.responseText).detail)); } catch { reject(new Error('HTTP '+xhr.status)); } }
       };
       xhr.onerror   = () => reject(new Error('Network error'));
       xhr.ontimeout = () => reject(new Error('Request timed out'));
@@ -444,7 +408,7 @@ uploadBtn.addEventListener('click', async () => {
   } catch (e) {
     showError('Upload failed: ' + e.message);
     uploadBtn.disabled = false;
-    progressWrap.classList.add('hidden');
+    progressWrap.classList.remove('show');
     return;
   }
 
@@ -455,80 +419,58 @@ uploadBtn.addEventListener('click', async () => {
     try {
       const res  = await fetch(`/upload/status/${encodeURIComponent(jobId)}`);
       const data = await res.json();
-
       if (data.status === 'failed') {
         clearInterval(pollTimer);
-        showError(data.error || 'Transcription failed — check server logs.');
-        progressWrap.classList.add('hidden');
+        showError(data.error || 'Transcription failed.');
+        progressWrap.classList.remove('show');
         uploadBtn.disabled = false;
         return;
       }
-
       const pct =
         data.status === 'uploading'        ? 35 :
         data.status === 'extracting_audio' ? 45 :
-        data.status === 'transcribing'     ? 45 + Math.round((data.progress / 100) * 40) :
+        data.status === 'transcribing'     ? 45 + Math.round((data.progress/100)*40) :
         data.status === 'summarizing'      ? 90 :
         data.status === 'done'             ? 100 : 40;
-
       setProgress(pct, STAGE[data.status] || data.status);
-
-      if (data.status === 'done') {
-        clearInterval(pollTimer);
-        await onDone(jobId, data);
-      }
-    } catch {
-      // transient network blip — keep polling
-    }
+      if (data.status === 'done') { clearInterval(pollTimer); await onDone(jobId, data); }
+    } catch { /* network blip */ }
   }, 2500);
 });
 
-// ── Results ────────────────────────────────────────────────────────────────────
 async function onDone(jobId, statusData) {
   setProgress(100, 'Complete!');
+  setTimeout(() => progressWrap.classList.remove('show'), 1800);
 
-  // Summary comes bundled with the final status response
-  summaryCard.classList.remove('hidden');
+  resultsPanel.classList.remove('hidden');
+  newUploadBtn.classList.remove('hidden');
+
   if (statusData.summary) {
-    summaryContent.innerHTML =
-      `<div class="summary-text">${esc(statusData.summary)}</div>`;
+    summaryContent.innerHTML = `<div class="summary-text">${esc(statusData.summary)}</div>`;
   } else {
-    summaryContent.innerHTML =
-      `<div class="summary-text" style="color:var(--dim);font-style:italic">Summary unavailable.</div>`;
+    summaryContent.innerHTML = `<div class="summary-text" style="color:var(--dim);font-style:italic">Summary unavailable.</div>`;
   }
 
-  // Fetch full transcript
-  transcriptCard.classList.remove('hidden');
   try {
     const res = await fetch(`/upload/transcript/${encodeURIComponent(jobId)}`);
     transcriptText = await res.text();
-
     const lines = transcriptText.split('\n').filter(l => l.trim()).length;
     const words = transcriptText.split(/\s+/).filter(Boolean).length;
-
     transcriptBox.textContent  = transcriptText;
     transcriptMeta.textContent = `${lines} lines · ~${words.toLocaleString()} words`;
-
     downloadBtn.onclick = () => {
-      const a  = document.createElement('a');
-      a.href   = URL.createObjectURL(new Blob([transcriptText], {type: 'text/plain'}));
-      a.download = (selectedFile?.name || 'meeting').replace(/\.[^.]+$/, '') + '_transcript.txt';
-      a.click();
-      URL.revokeObjectURL(a.href);
+      const a = document.createElement('a');
+      a.href  = URL.createObjectURL(new Blob([transcriptText],{type:'text/plain'}));
+      a.download = (selectedFile?.name||'meeting').replace(/\.[^.]+$/,'')+'_transcript.txt';
+      a.click(); URL.revokeObjectURL(a.href);
     };
   } catch (e) {
     transcriptBox.textContent = 'Could not load transcript: ' + e.message;
   }
 
-  // Q&A
-  qaCard.classList.remove('hidden');
-  newUploadBtn.classList.remove('hidden');
-
-  setTimeout(() => progressWrap.classList.add('hidden'), 1800);
-  summaryCard.scrollIntoView({behavior: 'smooth', block: 'start'});
+  resultsPanel.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
-// ── Q&A ────────────────────────────────────────────────────────────────────────
 askBtn.addEventListener('click', sendQuestion);
 questionInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
@@ -537,18 +479,14 @@ questionInput.addEventListener('keydown', e => {
 async function sendQuestion() {
   const q = questionInput.value.trim();
   if (!q || !currentJobId || askBtn.disabled) return;
-
   questionInput.value = '';
   askBtn.disabled = true;
-
   addBubble('q', q);
   const answerEl = addBubble('a', null, true);
-
   try {
     const res  = await fetch(`/upload/ask/${encodeURIComponent(currentJobId)}`, {
-      method:  'POST',
-      headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({question: q}),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({question:q}),
     });
     const data = await res.json();
     const textEl = answerEl.querySelector('.qa-text');
@@ -562,38 +500,32 @@ async function sendQuestion() {
     askBtn.disabled = false;
     questionInput.focus();
   }
-
-  answerEl.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  answerEl.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
-function addBubble(type, text, thinking = false) {
+function addBubble(type, text, thinking=false) {
   const div = document.createElement('div');
   div.className = `qa-item qa-${type}`;
   div.innerHTML =
-    `<div class="qa-label">${type === 'q' ? 'You' : 'Assistant'}</div>` +
-    `<div class="qa-text ${thinking ? 'qa-thinking' : ''}">${
-      thinking ? 'Thinking…' : esc(text)
-    }</div>`;
+    `<div class="qa-label">${type==='q'?'You':'Assistant'}</div>` +
+    `<div class="qa-text ${thinking?'qa-thinking':''}">${thinking?'Thinking…':esc(text)}</div>`;
   qaHistory.appendChild(div);
   return div;
 }
 
-// ── New upload ─────────────────────────────────────────────────────────────────
 newUploadBtn.addEventListener('click', () => {
   if (currentJobId) {
-    fetch(`/upload/${encodeURIComponent(currentJobId)}`, {method: 'DELETE'}).catch(() => {});
+    fetch(`/upload/${encodeURIComponent(currentJobId)}`,{method:'DELETE'}).catch(()=>{});
     currentJobId = null;
   }
   clearFile();
   hideError();
   transcriptText = '';
   qaHistory.innerHTML = '';
-  summaryCard.classList.add('hidden');
-  transcriptCard.classList.add('hidden');
-  qaCard.classList.add('hidden');
+  resultsPanel.classList.add('hidden');
   newUploadBtn.classList.add('hidden');
-  progressWrap.classList.add('hidden');
-  window.scrollTo({top: 0, behavior: 'smooth'});
+  progressWrap.classList.remove('show');
+  window.scrollTo({top:0,behavior:'smooth'});
 });
 </script>
 
