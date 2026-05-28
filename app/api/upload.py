@@ -335,11 +335,14 @@ async def ask_question(job_id: str, body: QuestionRequest):
     context = "\n\n---\n\n".join(context_parts) if context_parts else "No meeting content available."
 
     prompt = (
-        "You are a meeting assistant. Answer the following question using the meeting content provided below.\n"
-        "Use the summary and transcript sections to give a specific, complete answer.\n"
-        "If the information is not present in the content, say so clearly.\n\n"
+        "You are a meeting transcript assistant. Your ONLY job is to answer questions strictly based on the meeting transcript and summary provided below.\n"
+        "STRICT RULES:\n"
+        "- Answer ONLY from the meeting content provided. Do NOT use any outside knowledge.\n"
+        "- Do NOT talk about the company, products, or anything not explicitly mentioned in this transcript.\n"
+        "- If the answer is not found in the meeting content, respond exactly: 'This was not discussed in the meeting.'\n"
+        "- Never make up or infer information that is not clearly stated in the transcript.\n\n"
         f"MEETING CONTENT:\n{context}\n\n"
-        f"QUESTION: {question}\n\nANSWER:"
+        f"QUESTION: {question}\n\nANSWER (based only on the meeting content above):"
     )
 
     try:
