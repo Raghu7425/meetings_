@@ -116,13 +116,13 @@ class SentimentSchema(BaseModel):
 
 
 class TimelineItemSchema(BaseModel):
-    time:  str
-    topic: str
+    time:  str = ""   # LLM sometimes omits this — default prevents validation crash
+    topic: str = ""
 
 
 class QuoteSchema(BaseModel):
-    speaker: str
-    quote:   str
+    speaker: str = ""
+    quote:   str = ""
 
 
 class MetricsSchema(BaseModel):
@@ -291,6 +291,10 @@ def _normalize_report(report: MeetingReport) -> MeetingReport:
         else r
         for r in report.risks_blockers
     ]
+
+    # Drop timeline/quote items the LLM returned with no content
+    report.timeline = [t for t in report.timeline if t.topic.strip()]
+    report.quotes   = [q for q in report.quotes   if q.quote.strip()]
 
     return report
 
