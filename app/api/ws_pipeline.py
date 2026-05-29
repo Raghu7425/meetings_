@@ -229,14 +229,39 @@ async def _process_utterance(ws: WebSocket, s: SessionState):
         if audio is None:
             return
 
-        current_emb = await _extract_current_embedding(ws, s, audio)
-        if current_emb is None:
-            return
-
-        # Enrollment phase
+        # Enrollment phase: both embedding and STT are always needed — run in parallel.
         if not s.primary_speaker_enrolled:
-            text, stt_ms = await _run_stt_and_validate(ws, s, audio, phase="enrollment")
-            if not text:
+            s.set_state(SessionState.PROCESSING)
+            await _safe_send_json(ws, {"type": "status", "text": "thinking"})
+
+            t_stt_start = time.monotonic()
+            emb_result, stt_result = await asyncio.gather(
+                asyncio.to_thread(extract_embedding, audio, SAMPLE_RATE),
+                asyncio.to_thread(transcribe_np, audio),
+                return_exceptions=True,
+            )
+
+            if isinstance(emb_result, Exception) or emb_result is None:
+                log.warning(f"[{s.id}] speaker embedding failed: {emb_result}")
+                s.set_state(SessionState.IDLE)
+                await _safe_send_json(ws, {"type": "status", "text": "idle"})
+                return
+            current_emb = emb_result
+
+            if isinstance(stt_result, Exception):
+                log.error(f"[{s.id}] STT error during enrollment: {stt_result}")
+                s.set_state(SessionState.IDLE)
+                await _safe_send_json(ws, {"type": "status", "text": "idle"})
+                return
+
+            text = stt_result or ""
+            s.t_stt_done = time.monotonic()
+            stt_ms = int((s.t_stt_done - t_stt_start) * 1000)
+
+            if not text or not is_usable_transcript(text):
+                log.info(f"[{s.id}] STT empty/unusable during enrollment -> idle")
+                s.set_state(SessionState.IDLE)
+                await _safe_send_json(ws, {"type": "status", "text": "idle"})
                 return
 
             ok = await _handle_enrollment_phase(ws, s, current_emb, text, stt_ms)
@@ -247,7 +272,11 @@ async def _process_utterance(ws: WebSocket, s: SessionState):
             await _run_speaking(ws, s, text, gen_id, stt_ms)
             return
 
-        # Verification phase
+        # Verification phase: need embedding result before deciding to run STT.
+        current_emb = await _extract_current_embedding(ws, s, audio)
+        if current_emb is None:
+            return
+
         ok = await _handle_verification_phase(ws, s, current_emb)
         if not ok:
             return

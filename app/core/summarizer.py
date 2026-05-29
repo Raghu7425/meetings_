@@ -69,9 +69,10 @@ async def _call_ollama_compact(prompt: str) -> str:
         resp = await client.post(
             f"{OLLAMA_BASE_URL}/api/generate",
             json={
-                "model":  MEETING_LLM_MODEL,
-                "prompt": prompt,
-                "stream": False,
+                "model":      MEETING_LLM_MODEL,
+                "prompt":     prompt,
+                "stream":     False,
+                "keep_alive": -1,
                 "options": {
                     "temperature": 0.1,
                     "num_predict": SUMMARIZER_MAX_TOKENS,
@@ -115,15 +116,24 @@ class IncrementalSummarizer:
             for i in range(start, len(lines), SUMMARIZER_CHUNK_LINES)
         ]
 
-        for i, chunk_lines in enumerate(chunks):
-            chunk_text = "\n".join(chunk_lines)
+        # Generate all chunk summaries in parallel, then merge sequentially.
+        # Rolling merge must stay sequential (each step depends on the previous).
+        import asyncio as _asyncio
+        raw_summaries = await _asyncio.gather(*[
+            retry_async(
+                _call_ollama_compact,
+                _CHUNK_SUMMARY_PROMPT.format(chunk="\n".join(cg)),
+                max_attempts=3,
+            )
+            for cg in chunks
+        ], return_exceptions=True)
+
+        rolling = state.get("rolling_summary", "")
+        for i, chunk_summary in enumerate(raw_summaries):
+            if isinstance(chunk_summary, Exception):
+                log.warning("[summarizer] chunk %d failed job=%s: %s", i, self.job_id, chunk_summary)
+                continue
             try:
-                chunk_summary = await retry_async(
-                    _call_ollama_compact,
-                    _CHUNK_SUMMARY_PROMPT.format(chunk=chunk_text),
-                    max_attempts=3,
-                )
-                rolling = state.get("rolling_summary", "")
                 if rolling:
                     rolling = await retry_async(
                         _call_ollama_compact,
@@ -141,8 +151,7 @@ class IncrementalSummarizer:
                     i + 1, len(chunks), self.job_id,
                 )
             except Exception as exc:
-                log.warning("[summarizer] chunk %d failed job=%s: %s", i, self.job_id, exc)
-                continue
+                log.warning("[summarizer] chunk %d merge failed job=%s: %s", i, self.job_id, exc)
 
         return state.get("rolling_summary", "")
 

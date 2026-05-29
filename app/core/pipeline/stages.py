@@ -58,6 +58,38 @@ def _ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+# ── Model caches — loaded once per process, reused across jobs ─────────────────
+_fw_model: Any = None
+_wx_model: Any = None
+_wx_align: dict = {}
+
+
+def _get_fw_model() -> Any:
+    global _fw_model
+    if _fw_model is None:
+        from faster_whisper import WhisperModel  # type: ignore
+        _fw_model = WhisperModel("base", device="cpu", compute_type="int8")
+        log.info("faster-whisper model loaded and cached")
+    return _fw_model
+
+
+def _get_wx_model() -> Any:
+    global _wx_model
+    if _wx_model is None:
+        import whisperx  # type: ignore
+        _wx_model = whisperx.load_model("base", "cpu", language="en")
+        log.info("whisperx model loaded and cached")
+    return _wx_model
+
+
+def _get_wx_align(lang: str) -> tuple:
+    if lang not in _wx_align:
+        import whisperx  # type: ignore
+        _wx_align[lang] = whisperx.load_align_model(language_code=lang, device="cpu")
+        log.info("whisperx align model loaded for lang=%s (cached)", lang)
+    return _wx_align[lang]
+
+
 def _extract_audio_sync(video_path: str, audio_path: str) -> None:
     cmd = [
         "ffmpeg", "-y", "-i", video_path,
@@ -78,13 +110,13 @@ def _transcribe_sync(audio_path: str, job_state_ref: dict) -> tuple[str, list[di
     import os
 
     try:
-        import whisperx
+        import whisperx  # type: ignore
         hf_token = os.getenv("HF_TOKEN", "")
-        model = whisperx.load_model("base", "cpu", language="en")
+        model = _get_wx_model()
         audio = whisperx.load_audio(audio_path)
-        result = model.transcribe(audio, batch_size=16)
+        result = model.transcribe(audio, batch_size=8)
         lang = result.get("language", "en")
-        align_model, meta = whisperx.load_align_model(language_code=lang, device="cpu")
+        align_model, meta = _get_wx_align(lang)
         result = whisperx.align(result["segments"], align_model, meta, audio, "cpu")
         if hf_token:
             diarize = whisperx.DiarizationPipeline(use_auth_token=hf_token, device="cpu")
@@ -108,8 +140,7 @@ def _transcribe_sync(audio_path: str, job_state_ref: dict) -> tuple[str, list[di
     except Exception as exc:
         log.warning("whisperx failed (%s), falling back to faster-whisper", exc)
 
-    from faster_whisper import WhisperModel
-    model = WhisperModel("base", device="cpu", compute_type="int8")
+    model = _get_fw_model()
     gen, info = model.transcribe(audio_path, language="en", beam_size=5,
                                   vad_filter=True, word_timestamps=False)
     total = float(info.duration) if info.duration else 1.0
