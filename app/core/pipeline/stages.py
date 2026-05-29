@@ -37,6 +37,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from typing import Any
 
 from app.config import (
@@ -103,55 +104,171 @@ def _extract_audio_sync(video_path: str, audio_path: str) -> None:
         raise RuntimeError(f"ffmpeg: {result.stderr.decode()[:400]}")
 
 
+def _mem_mb() -> int:
+    """Current process RSS in MB (requires psutil; returns 0 if not installed)."""
+    try:
+        import psutil
+        return psutil.Process().memory_info().rss // 1_048_576
+    except ImportError:
+        return 0
+
+
+def _step(ref: dict, step: str, progress: int) -> None:
+    """
+    Update the shared progress dict from inside the transcription thread.
+    The watchdog coroutine reads this dict every 5s and publishes to Redis.
+    """
+    ref["current_step"] = step
+    ref["progress"]     = progress
+    ref["step_ts"]      = time.time()
+    ref["mem_mb"]       = _mem_mb()
+    log.info(
+        "transcribe_step step=%s progress=%d mem_mb=%d",
+        step, progress, ref["mem_mb"],
+    )
+
+
 def _transcribe_sync(audio_path: str, job_state_ref: dict) -> tuple[str, list[dict]]:
     """
-    Returns (plain_transcript_str, segments_list).
-    segments_list: [{speaker, start, end, text}, ...]
-    job_state_ref["progress"] is mutated in-place for progress updates.
+    Full transcription pipeline with per-sub-step progress tracking.
+
+    Sub-step → progress band:
+      loading_model    11%
+      loading_audio    13%   + audio duration logged
+      transcribing     15-38% (updated per-batch via faster-whisper generator;
+                               whisperx batch returns all at once → held at 15%)
+      aligning         40%
+      diarizing        50%
+      assigning        57%
+      building         58%
     """
     import os
 
+    job_state_ref["step_start"] = time.time()
+
+    # ── WhisperX path ────────────────────────────────────────────────────────────
     try:
         import whisperx  # type: ignore
         hf_token = os.getenv("HF_TOKEN", "")
+
+        # 1. Load model (cached after first call)
+        _step(job_state_ref, "loading_model", 11)
+        t0 = time.perf_counter()
         model = _get_wx_model()
+        log.info("transcribe model_ready elapsed=%.1fs", time.perf_counter() - t0)
+
+        # 2. Load audio
+        _step(job_state_ref, "loading_audio", 13)
+        t0 = time.perf_counter()
         audio = whisperx.load_audio(audio_path)
+        audio_duration_s = len(audio) / 16_000
+        log.info(
+            "transcribe audio_loaded duration_min=%.1f elapsed=%.1fs mem_mb=%d",
+            audio_duration_s / 60, time.perf_counter() - t0, _mem_mb(),
+        )
+
+        # 3. Transcribe
+        _step(job_state_ref, "transcribing", 15)
+        t0 = time.perf_counter()
         result = model.transcribe(audio, batch_size=8)
+        n_raw = len(result.get("segments", []))
+        log.info(
+            "transcribe asr_done segments=%d elapsed=%.1fs mem_mb=%d",
+            n_raw, time.perf_counter() - t0, _mem_mb(),
+        )
+
+        # 4. Alignment (word-level timestamps)
         lang = result.get("language", "en")
+        _step(job_state_ref, f"aligning_lang={lang}", 40)
+        t0 = time.perf_counter()
         align_model, meta = _get_wx_align(lang)
         result = whisperx.align(result["segments"], align_model, meta, audio, "cpu")
-        if hf_token:
-            diarize = whisperx.DiarizationPipeline(use_auth_token=hf_token, device="cpu")
-            result = whisperx.assign_word_speakers(diarize(audio), result)
+        log.info(
+            "transcribe alignment_done elapsed=%.1fs mem_mb=%d",
+            time.perf_counter() - t0, _mem_mb(),
+        )
 
-        segs = result.get("segments", [])
+        # 5. Diarization (speaker labels)
+        if hf_token:
+            _step(job_state_ref, "loading_diarizer", 50)
+            t0 = time.perf_counter()
+            diarize_model = whisperx.DiarizationPipeline(
+                use_auth_token=hf_token, device="cpu"
+            )
+            log.info("transcribe diarizer_loaded elapsed=%.1fs", time.perf_counter() - t0)
+
+            _step(job_state_ref, "diarizing", 52)
+            t0 = time.perf_counter()
+            diarize_segments = diarize_model(audio)
+            log.info(
+                "transcribe diarization_done elapsed=%.1fs mem_mb=%d",
+                time.perf_counter() - t0, _mem_mb(),
+            )
+
+            _step(job_state_ref, "assigning_speakers", 57)
+            t0 = time.perf_counter()
+            result = whisperx.assign_word_speakers(diarize_segments, result)
+            log.info("transcribe speaker_assignment_done elapsed=%.1fs", time.perf_counter() - t0)
+        else:
+            log.warning("transcribe HF_TOKEN not set — skipping diarization, all SPEAKER_00")
+
+        # 6. Build output
+        _step(job_state_ref, "building_segments", 58)
+        segs  = result.get("segments", [])
         total = float(segs[-1]["end"]) if segs else 1.0
         lines, structured = [], []
         for seg in segs:
-            spk = seg.get("speaker", "SPEAKER_00")
+            spk  = seg.get("speaker", "SPEAKER_00")
             s, e = seg.get("start", 0), seg.get("end", 0)
             text = seg.get("text", "").strip()
             lines.append(f"[{s:.1f}s–{e:.1f}s] {spk}: {text}")
             structured.append({"speaker": spk, "start": s, "end": e, "text": text})
-            job_state_ref["progress"] = min(95, int((e / total) * 100))
 
+        total_elapsed = time.time() - job_state_ref["step_start"]
+        log.info(
+            "transcribe complete engine=whisperx segments=%d total_elapsed=%.1fs",
+            len(structured), total_elapsed,
+        )
         return "\n".join(lines), structured
 
     except ImportError:
-        pass
+        log.warning("transcribe whisperx not installed — using faster-whisper fallback")
     except Exception as exc:
-        log.warning("whisperx failed (%s), falling back to faster-whisper", exc)
+        log.error(
+            "transcribe whisperx failed step=%s error=%s — falling back",
+            job_state_ref.get("current_step", "unknown"), exc,
+            exc_info=True,
+        )
 
+    # ── faster-whisper fallback ───────────────────────────────────────────────────
+    _step(job_state_ref, "loading_fw_model", 12)
     model = _get_fw_model()
-    gen, info = model.transcribe(audio_path, language="en", beam_size=5,
-                                  vad_filter=True, word_timestamps=False)
+
+    _step(job_state_ref, "transcribing_fw", 15)
+    t0    = time.perf_counter()
+    gen, info = model.transcribe(
+        audio_path, language="en", beam_size=5,
+        vad_filter=True, word_timestamps=False,
+    )
     total = float(info.duration) if info.duration else 1.0
     lines, structured = [], []
-    for seg in gen:
+
+    for seg in gen:  # generator — real-time progress per segment
         text = seg.text.strip()
         lines.append(f"[{seg.start:.1f}s–{seg.end:.1f}s] {text}")
-        structured.append({"speaker": "SPEAKER_00", "start": seg.start, "end": seg.end, "text": text})
-        job_state_ref["progress"] = min(95, int((seg.end / total) * 100))
+        structured.append({"speaker": "SPEAKER_00", "start": seg.start,
+                           "end": seg.end, "text": text})
+        # map audio position to 15-58% band
+        band_progress = 15 + int((seg.end / total) * 43)
+        job_state_ref["progress"]     = min(58, band_progress)
+        job_state_ref["current_step"] = f"transcribing_fw seg_end={seg.end:.0f}s"
+        job_state_ref["step_ts"]      = time.time()
+
+    total_elapsed = time.time() - job_state_ref["step_start"]
+    log.info(
+        "transcribe complete engine=faster_whisper segments=%d total_elapsed=%.1fs",
+        len(structured), total_elapsed,
+    )
     return "\n".join(lines), structured
 
 
@@ -169,7 +286,13 @@ class PipelineRunner:
         self.filename   = filename
         self.audio_path = video_path.rsplit(".", 1)[0] + "_audio.wav"
         self.txt_path   = os.path.join(UPLOADS_DIR, f"{job_id}.txt")
-        self._progress  = {"progress": 0}  # shared ref for thread updates
+        self._progress: dict = {
+            "progress":     0,
+            "current_step": "queued",
+            "step_ts":      time.time(),
+            "step_start":   time.time(),
+            "mem_mb":       0,
+        }
 
     # ── public entry point ─────────────────────────────────────────────────────
 
@@ -221,18 +344,55 @@ class PipelineRunner:
     async def _stage_transcribe(self) -> tuple[str, list[dict]]:
         await self._update(PipelineEvent.TRANSCRIBING, 10, "Transcribing audio…")
 
-        # CPU-heavy — offload to thread
-        transcript, segments = await asyncio.to_thread(
-            _transcribe_sync, self.audio_path, self._progress
-        )
+        # Watchdog: reads the shared progress dict every 5s and publishes to Redis.
+        # This is the ONLY way to get live feedback from the sync thread.
+        watchdog_task = asyncio.ensure_future(self._transcribe_watchdog())
+        try:
+            transcript, segments = await asyncio.to_thread(
+                _transcribe_sync, self.audio_path, self._progress
+            )
+        finally:
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
 
-        # Save raw timestamped transcript to disk for user download
         os.makedirs(os.path.dirname(self.txt_path), exist_ok=True)
         with open(self.txt_path, "w", encoding="utf-8") as f:
             f.write(f"# Transcript: {self.filename}\n\n{transcript}")
 
         await self._update(PipelineEvent.TRANSCRIBING, 60, "Transcription complete")
         return transcript, segments
+
+    async def _transcribe_watchdog(self) -> None:
+        """
+        Publishes live sub-step progress to Redis every 5 seconds while
+        _transcribe_sync runs in a thread.  Gives real visibility into which
+        WhisperX phase is running and how long it has been stuck there.
+        """
+        INTERVAL = 5  # seconds between Redis updates
+        while True:
+            await asyncio.sleep(INTERVAL)
+
+            step     = self._progress.get("current_step", "initializing")
+            progress = self._progress.get("progress", 10)
+            mem_mb   = self._progress.get("mem_mb", 0)
+            step_ts  = self._progress.get("step_ts", time.time())
+            step_sec = int(time.time() - step_ts)
+
+            message = f"Transcribing [{step}] — {step_sec}s in this step"
+            if mem_mb:
+                message += f" | RAM {mem_mb} MB"
+
+            # Clamp to the transcription band (10-59) so it never shows ≥60%
+            display_progress = max(10, min(int(progress), 59))
+
+            await self._update(PipelineEvent.TRANSCRIBING, display_progress, message)
+            log.info(
+                "watchdog job=%s step=%s progress=%d step_elapsed=%ds mem_mb=%d",
+                self.job_id, step, display_progress, step_sec, mem_mb,
+            )
 
     async def _stage_nlp(self, transcript: str, segments: list[dict]) -> "StructuredKnowledge":  # type: ignore[name-defined]
         from app.core.structured_knowledge import StructuredKnowledge
