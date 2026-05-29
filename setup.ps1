@@ -126,11 +126,12 @@ Success ".env configured."
 # ── Step 3: Start Docker services ─────────────────────────────────────────────
 Info "Step 3/5 — Starting Docker services (postgres, minio, ollama)..."
 
-# Start only infrastructure first (not the app — migrations need to run first)
-docker compose up -d postgres minio ollama
+# Start all infrastructure first (not the app — migrations need to run first)
+docker compose up -d postgres minio ollama qdrant
 
-Wait-Healthy "meeting_postgres" 60
-Wait-Healthy "meeting_minio"    60
+Wait-Healthy "meeting_postgres" 90
+Wait-Healthy "meeting_minio"    90
+Wait-Healthy "meeting_qdrant"   120
 
 Success "Infrastructure containers running."
 
