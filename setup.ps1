@@ -254,11 +254,13 @@ if ($StartOnly) {
 
 Info "Step 3/5 - Starting infrastructure containers..."
 
-docker compose up -d postgres minio ollama qdrant
+docker compose up -d postgres redis minio ollama qdrant memgraph
 
-Wait-Healthy "meeting_postgres" 90
-Wait-Healthy "meeting_minio"    90
-Wait-Healthy "meeting_qdrant"   120
+Wait-Healthy "meeting_postgres"  90
+Wait-Healthy "meeting_redis"     60
+Wait-Healthy "meeting_minio"     90
+Wait-Healthy "meeting_qdrant"    120
+Wait-Healthy "meeting_memgraph"  120
 
 Success "Infrastructure services are running."
 
@@ -266,7 +268,7 @@ Success "Infrastructure services are running."
 # Step 4 - Build app and run migrations
 # ------------------------------------------------------------------------------
 
-Info "Step 4/5 - Building app image (includes NLP model downloads: spaCy + NLTK)..."
+Info "Step 4/5 - Building app image (NLP bake-in: spaCy en_core_web_sm + NLTK vader/punkt + PyTextRank + Sumy)..."
 
 docker compose build app
 
@@ -341,13 +343,16 @@ Write-Host " Setup complete! Starting the application... " -ForegroundColor Gree
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host ""
 
-Write-Host " App URL      : http://localhost:8000" -ForegroundColor White
-Write-Host " MinIO UI     : http://localhost:9001" -ForegroundColor White
-Write-Host " Ollama API   : http://meeting_ollama:11434" -ForegroundColor White
-Write-Host " Qdrant UI    : http://localhost:6333/dashboard" -ForegroundColor White
+Write-Host " App URL        : http://localhost:8000" -ForegroundColor White
+Write-Host " Intelligence   : http://localhost:8000/intelligence/topics" -ForegroundColor White
+Write-Host " MinIO UI       : http://localhost:9001" -ForegroundColor White
+Write-Host " Ollama API     : http://meeting_ollama:11434" -ForegroundColor White
+Write-Host " Qdrant UI      : http://localhost:6333/dashboard" -ForegroundColor White
+Write-Host " Memgraph Bolt  : bolt://localhost:7687  (enable: MEMGRAPH_ENABLED=true)" -ForegroundColor White
 Write-Host ""
 
-Write-Host " NLP Engine   : spaCy en_core_web_sm + NLTK VADER (baked into image)" -ForegroundColor DarkGray
+Write-Host " NLP Stack    : spaCy + PyTextRank + Sumy + BERTopic + SentenceTransformers" -ForegroundColor DarkGray
+Write-Host " Graph        : Memgraph (disabled by default — set MEMGRAPH_ENABLED=true)" -ForegroundColor DarkGray
 Write-Host " MinIO Login  : admin / minioadmin" -ForegroundColor DarkGray
 Write-Host " Stop Stack   : docker compose down" -ForegroundColor DarkGray
 Write-Host " View Logs    : docker compose logs -f app" -ForegroundColor DarkGray

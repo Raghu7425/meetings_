@@ -218,6 +218,20 @@ PIPELINE_CONSUMER_NAME  = os.getenv("PIPELINE_CONSUMER_NAME", "worker_1")
 PIPELINE_BLOCK_MS       = int(os.getenv("PIPELINE_BLOCK_MS", "5000"))
 
 
+# ── Memgraph (knowledge graph) ────────────────────────────────────────────────
+MEMGRAPH_HOST     = os.getenv("MEMGRAPH_HOST", "localhost")
+MEMGRAPH_PORT     = int(os.getenv("MEMGRAPH_PORT", "7687"))
+MEMGRAPH_USER     = os.getenv("MEMGRAPH_USER", "")
+MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
+MEMGRAPH_ENABLED  = os.getenv("MEMGRAPH_ENABLED", "false").lower() == "true"
+
+# ── BERTopic ───────────────────────────────────────────────────────────────────
+BERTOPIC_MODEL_DIR      = os.path.join(DATA_DIR, "topic_model")
+BERTOPIC_MIN_TOPIC_SIZE = int(os.getenv("BERTOPIC_MIN_TOPIC_SIZE", "3"))
+
+# ── Entity resolver ────────────────────────────────────────────────────────────
+ENTITY_RESOLVER_THRESHOLD = float(os.getenv("ENTITY_RESOLVER_THRESHOLD", "0.82"))
+
 # ── Qdrant ─────────────────────────────────────────────────────────────────────
 QDRANT_HOST            = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT            = int(os.getenv("QDRANT_PORT", "6333"))

@@ -18,6 +18,16 @@ langchain-core>=1.0.0
 langgraph>=1.0.0
 edge-tts>=7.0.0
 
+# ── NLP enhancements ──────────────────────────────────────────────────────────
+spacy>=3.7.0
+pytextrank>=3.3.0          # TextRank phrase extraction — replaces RAKE-NLTK
+sumy>=0.9.1                # Extractive summarization (LSA, TextRank, Luhn)
+bertopic>=0.16.4           # Cross-meeting topic modeling
+# NOTE: rake-nltk kept as optional fallback (not required after upgrade)
+
+# ── Knowledge graph ───────────────────────────────────────────────────────────
+neo4j>=5.0.0               # Bolt protocol driver — works with Memgraph 2.x
+
 
 
 # ubuntu server

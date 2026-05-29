@@ -8,7 +8,7 @@ lightweight models. Runs BEFORE the LLM extractor, handling:
   ─────────     ──────────────────────────────────────────────────
   Speaker stats pure computation from diarization segments (O(n))
   NER           spaCy en_core_web_sm — PERSON, ORG, GPE, DATE
-  Keywords      RAKE-NLTK (no model) → frequency fallback
+  Keywords      PyTextRank (TextRank graph) → frequency fallback
   Topics        Sliding-window TF vocab shift (no model)
   Tasks         Regex pattern bank + dependency heuristics
   Decisions     Regex pattern bank (agreed/decided/approved)
@@ -16,9 +16,13 @@ lightweight models. Runs BEFORE the LLM extractor, handling:
   Risks         Keyword-category lookup table
   Sentiment     VADER (lexicon, no GPU, <1ms per segment)
   Questions     Regex on interrogative syntax
+  Entity norm.  SentenceTransformers cosine dedup (EntityResolver)
 
 Token savings: ~95% vs sending raw transcript to LLM.
 Latency: 2-5s for a 4-hour meeting (CPU-only, no GPU needed).
+
+Speed note: _extract_entities() now returns the spaCy Doc so that
+keywords can reuse it (single nlp() call for NER + TextRank phrases).
 """
 
 from __future__ import annotations
@@ -61,7 +65,18 @@ def _load_spacy() -> Any:
             from spacy.cli import download as spacy_download
             spacy_download("en_core_web_sm")
             _spacy_nlp = spacy.load("en_core_web_sm")
-        log.info("spaCy en_core_web_sm loaded")
+
+        # Add PyTextRank for graph-based phrase extraction (replaces RAKE-NLTK)
+        try:
+            import pytextrank  # noqa: F401
+            existing = [p.name for p in _spacy_nlp.pipeline]
+            if "textrank" not in existing:
+                _spacy_nlp.add_pipe("textrank")
+            log.info("PyTextRank added to spaCy pipeline")
+        except (ImportError, Exception) as _pte:
+            log.info("PyTextRank unavailable (%s) — frequency fallback active", _pte)
+
+        log.info("spaCy pipeline: %s", [p.name for p in _spacy_nlp.pipeline])
     except ImportError:
         log.warning("spaCy not installed — NER disabled; pip install spacy")
     return _spacy_nlp
@@ -185,10 +200,10 @@ class NLPEngine:
         full_text = plain_transcript or " ".join(s.get("text", "") for s in segments)
         duration = max((s.get("end", 0.0) for s in segments), default=0.0)
 
-        speakers   = self._speaker_stats(segments)
-        entities   = self._extract_entities(full_text)
-        keywords   = self._extract_keywords(full_text)
-        topics     = self._segment_topics(segments, keywords)
+        speakers          = self._speaker_stats(segments)
+        entities, nlp_doc = self._extract_entities(full_text)
+        keywords          = self._extract_keywords(full_text, doc=nlp_doc)
+        topics            = self._segment_topics(segments, keywords)
         tasks      = self._detect_tasks(segments)
         decisions  = self._detect_decisions(segments)
         deadlines  = self._extract_deadlines(segments)
@@ -244,21 +259,30 @@ class NLPEngine:
 
     # ── Entity extraction ────────────────────────────────────────────────────────
 
-    def _extract_entities(self, text: str) -> EntityMap:
+    def _extract_entities(self, text: str) -> tuple[EntityMap, Any]:
+        """
+        Returns (EntityMap, spaCy doc).
+        The doc is reused by _extract_keywords so spaCy runs only once.
+        For texts > 50k chars, NER spans the full text but the returned doc
+        covers only the first 50k chunk (sufficient for PyTextRank phrases).
+        """
         em = EntityMap()
         nlp = _load_spacy()
         if nlp is None:
             em.technologies = self._detect_tech(text)
-            return em
+            return em, None
 
         people: set[str] = set()
         orgs: set[str] = set()
         locs: set[str] = set()
         dates: set[str] = set()
 
-        # Chunk large transcripts — spaCy default limit is 1M chars
+        first_doc = None
+        # Chunk large transcripts — spaCy limit is 1M chars; 50k is safe for memory
         for chunk_start in range(0, len(text), 50_000):
             doc = nlp(text[chunk_start:chunk_start + 50_000])
+            if first_doc is None:
+                first_doc = doc  # keep first doc for PyTextRank phrase reuse
             for ent in doc.ents:
                 val = ent.text.strip()
                 if not (2 <= len(val) <= 60):
@@ -278,7 +302,17 @@ class NLPEngine:
         em.dates         = sorted(dates)[:20]
         em.technologies  = self._detect_tech(text)
         em.projects      = self._detect_projects(text)
-        return em
+
+        # Entity normalization — collapse STT variations ("Pete"/"Peter"/"Pita")
+        try:
+            from app.core.nlp.entity_resolver import get_entity_resolver
+            resolver = get_entity_resolver()
+            em.people        = list(dict.fromkeys(resolver.resolve_list(em.people)))[:30]
+            em.organizations = list(dict.fromkeys(resolver.resolve_list(em.organizations)))[:20]
+        except Exception:
+            pass  # normalization is best-effort
+
+        return em, first_doc
 
     def _detect_tech(self, text: str) -> list[str]:
         tl = text.lower()
@@ -298,16 +332,14 @@ class NLPEngine:
 
     # ── Keyword extraction ───────────────────────────────────────────────────────
 
-    def _extract_keywords(self, text: str, top_n: int = 30) -> list[str]:
-        try:
-            from rake_nltk import Rake  # type: ignore
-            r = Rake()
-            r.extract_keywords_from_text(text[:20_000])
-            phrases = r.get_ranked_phrases()[:top_n]
-            return [p for p in phrases if len(p.strip()) >= 3]
-        except ImportError:
-            pass
-        # Frequency fallback — bigrams + unigrams
+    def _extract_keywords(self, text: str, top_n: int = 30, doc: Any = None) -> list[str]:
+        # PyTextRank: reuse the spaCy doc if NER already ran (zero extra cost)
+        if doc is not None and hasattr(doc, "_") and hasattr(doc._, "phrases"):
+            phrases = [p.text for p in doc._.phrases if len(p.text.strip()) >= 3]
+            if phrases:
+                return phrases[:top_n]
+
+        # Frequency fallback — bigrams + unigrams (no external deps)
         words = re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
         filtered = [w for w in words if w not in _STOPWORDS]
         freq = Counter(filtered)

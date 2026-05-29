@@ -68,12 +68,13 @@ except ImportError as _e:
 try:
     from app.api.webhook import router as webhook_router
     from app.api.meetings import router as meetings_router, action_router
+    from app.api.intelligence import router as intelligence_router
     from app.core.scheduler import start_scheduler, stop_scheduler
     from app.core.storage import ensure_bucket
     from app.db.database import init_db
     _MEETING_PIPELINE_AVAILABLE = True
 except ImportError:
-    webhook_router = meetings_router = action_router = None
+    webhook_router = meetings_router = action_router = intelligence_router = None
     _MEETING_PIPELINE_AVAILABLE = False
 
 
@@ -147,6 +148,15 @@ async def _preload_embedders() -> None:
         log.warning("embedder preload failed (non-fatal): %s", exc)
 
 
+async def _preload_topic_engine() -> None:
+    try:
+        from app.core.nlp.topic_engine import get_topic_engine
+        await asyncio.to_thread(get_topic_engine)
+        log.info("BERTopic engine loaded")
+    except Exception as exc:
+        log.warning("BERTopic preload failed (non-fatal): %s", exc)
+
+
 # ── Lifespan ───────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
@@ -164,6 +174,7 @@ async def lifespan(app: FastAPI):
         _probe_tts(),
         _ensure_qdrant_collections(),
         _preload_embedders(),
+        _preload_topic_engine(),
         return_exceptions=True,
     )
 
@@ -236,3 +247,4 @@ if _MEETING_PIPELINE_AVAILABLE:
     app.include_router(webhook_router)
     app.include_router(meetings_router)
     app.include_router(action_router)
+    app.include_router(intelligence_router)

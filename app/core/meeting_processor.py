@@ -17,6 +17,8 @@ from app.core.storage import upload_file
 from app.core.notifier import send_summary_email, send_failure_email
 from app.core.scheduler import schedule_reminders
 from app.config import JIRA_ENABLED
+from app.core.nlp.summarizer import multi_summary_async
+from app.core.graph.sync import sync_meeting_to_graph
 
 log = logging.getLogger("meeting_processor")
 
@@ -135,18 +137,34 @@ async def process_meeting(call_id: str) -> None:
             call_id, len(transcript_text), len(clean_text),
         )
         try:
-            knowledge = await run_nlp_pipeline(segments, call_id, clean_text)
+            # Run NLP + Sumy extractive summaries in parallel (both CPU-bound)
+            nlp_task    = run_nlp_pipeline(segments, call_id, clean_text)
+            sumy_task   = multi_summary_async(clean_text)
+            knowledge, sumy_summaries = await asyncio.gather(
+                nlp_task, sumy_task, return_exceptions=True,
+            )
+            if isinstance(knowledge, Exception):
+                raise knowledge
+            if isinstance(sumy_summaries, Exception):
+                log.warning("[processor] Sumy failed (non-fatal): %s", sumy_summaries)
+                sumy_summaries = {}
             report = await extract_insights_hybrid(clean_text, knowledge)
         except Exception as e:
             raise RuntimeError(f"extract_insights failed: {e}") from e
 
         # ── 8. Persist to DB ───────────────────────────────────────────────
+        meeting_title = report.meeting_metadata.meeting_title or title
+        structured = report.model_dump()
+        # Embed Sumy extractive summaries into structured_data
+        if sumy_summaries:
+            structured["extractive_summaries"] = sumy_summaries
+
         async with AsyncSessionLocal() as session:
             await session.execute(
                 update(Meeting)
                 .where(Meeting.call_id == call_id)
                 .values(
-                    title=report.meeting_metadata.meeting_title or title,
+                    title=meeting_title,
                     date=dt,
                     duration_minutes=report.duration_minutes,
                     participant_count=report.participant_count or len(attendees),
@@ -155,7 +173,7 @@ async def process_meeting(call_id: str) -> None:
                     open_questions=report.open_questions,
                     audio_path=audio_object if audio_minio_url else None,
                     transcript_path=txt_object or None,
-                    structured_data=report.model_dump(),
+                    structured_data=structured,
                     status="done",
                 )
             )
@@ -175,6 +193,27 @@ async def process_meeting(call_id: str) -> None:
             await session.commit()
 
         log.info(f"[processor] DB persisted for call_id={call_id}")
+
+        # ── 8b. Graph sync + topic model (background, non-blocking) ───────
+        asyncio.create_task(
+            sync_meeting_to_graph(
+                meeting_uuid,
+                {
+                    "call_id":          call_id,
+                    "title":            meeting_title,
+                    "date":             dt.isoformat(),
+                    "duration_minutes": report.duration_minutes,
+                    "summary":          report.summary.short_summary or "",
+                },
+                knowledge,
+                report,
+            ),
+            name=f"graph_sync_{call_id[:8]}",
+        )
+        asyncio.create_task(
+            _update_topic_model(clean_text, meeting_uuid),
+            name=f"bertopic_{call_id[:8]}",
+        )
 
         # ── 9, 10, 11. Email + reminders + Jira in parallel ──────────────
         async def _jira_task():
@@ -225,3 +264,17 @@ async def process_meeting(call_id: str) -> None:
         log.exception(f"[processor] Fatal error for call_id={call_id}: {e}")
         await _mark_failed(call_id, str(e))
         await send_failure_email(call_id, str(e))
+
+
+async def _update_topic_model(text: str, meeting_id: str) -> None:
+    """Background task: add meeting to BERTopic corpus and refit if needed."""
+    try:
+        from app.core.nlp.topic_engine import get_topic_engine
+        engine = get_topic_engine()
+        topics = await engine.add_meeting_async(text, meeting_id)
+        if topics:
+            log.info(
+                "[processor] BERTopic: %d topics for meeting_id=%s", len(topics), meeting_id
+            )
+    except Exception as exc:
+        log.warning("[processor] BERTopic update failed (non-fatal): %s", exc)

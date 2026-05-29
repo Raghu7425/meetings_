@@ -35,6 +35,18 @@ _FILLERS = re.compile(
     re.IGNORECASE,
 )
 
+# STT quality: partial words cut off with em/en dash or hyphen
+# "I was tal— talking" → "I was talking"  (remove the truncated prefix)
+_PARTIAL_WORD = re.compile(r'\b\w{1,5}[—–-]{1,2}\s+', re.IGNORECASE)
+
+# STT quality: consecutive duplicate words
+# "Peter Peter will" → "Peter will",  "the the problem" → "the problem"
+_DUP_WORDS = re.compile(r'\b(\w{2,})\s+\1\b', re.IGNORECASE)
+
+# STT quality: normalize excessive punctuation
+# "Really!!!" → "Really!"  / "What???" → "What?"
+_MULTI_PUNCT = re.compile(r'([!?]){2,}')
+
 # Collapse multiple spaces / dots left by filler removal
 _MULTI_SPACE = re.compile(r'[ \t]{2,}')
 _LEADING_COMMA = re.compile(r'^[,\s]+')
@@ -75,6 +87,9 @@ class _Seg:
 def _clean_text(raw: str) -> str:
     t = _NOISE.sub('', raw)
     t = _FILLERS.sub('', t)
+    t = _PARTIAL_WORD.sub('', t)    # remove "tal- " cut-off prefixes
+    t = _DUP_WORDS.sub(r'\1', t)   # collapse "Peter Peter" → "Peter"
+    t = _MULTI_PUNCT.sub(r'\1', t) # "!!!" → "!"
     t = _MULTI_SPACE.sub(' ', t)
     t = _LEADING_COMMA.sub('', t)
     t = _TRAILING_LOOSE.sub('', t)

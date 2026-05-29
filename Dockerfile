@@ -51,19 +51,21 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir -r requirements.txt -r requirements_meeting.txt
 
 # ── NLP model downloads (baked into image — no runtime download needed) ────────
-# spaCy: en_core_web_sm for NER (people, orgs, dates) — ~12 MB
-# NLTK : vader_lexicon for sentiment analysis          — ~2 MB
+# spaCy  : en_core_web_sm for NER + PyTextRank phrase extraction — ~12 MB
+# NLTK   : vader_lexicon (sentiment) + punkt/punkt_tab (Sumy tokenizer) — ~5 MB
 RUN python -m spacy download en_core_web_sm \
     && python -c "\
 import nltk; \
 nltk.download('vader_lexicon', quiet=True); \
 nltk.download('stopwords', quiet=True); \
+nltk.download('punkt', quiet=True); \
+nltk.download('punkt_tab', quiet=True); \
 print('NLTK data downloaded')"
 
 # ── App code ──────────────────────────────────────────────────────────────────
 COPY . .
 
-RUN mkdir -p uploads logs data/input data/vector_database templates
+RUN mkdir -p uploads logs data/input data/vector_database data/topic_model templates
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 EXPOSE 8000
