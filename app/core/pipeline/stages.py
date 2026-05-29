@@ -47,6 +47,7 @@ from app.config import (
 from app.core.extractor import extract_insights, MeetingReport
 from app.core.pipeline.event_bus import PipelineEvent, publish_event
 from app.core.summarizer import IncrementalSummarizer
+from app.core.transcript_cleaner import clean_transcript
 from app.db.redis_client import get_redis, RedisJobStore
 from app.utils.logging_config import bind_context, clear_context
 
@@ -176,9 +177,23 @@ class PipelineRunner:
         try:
             await self._stage_audio()
             transcript, segments = await self._stage_transcribe()
-            report = await self._stage_extract(transcript)
-            await self._stage_rag_index(transcript, segments, report)
-            await self._stage_complete(transcript, report)
+
+            # Clean transcript for LLM — raw is already on disk for user download
+            clean = await asyncio.to_thread(clean_transcript, transcript)
+            log.info(
+                "transcript cleaned job=%s raw_chars=%d clean_chars=%d reduction=%.0f%%",
+                self.job_id, len(transcript), len(clean),
+                100 * (1 - len(clean) / max(len(transcript), 1)),
+            )
+
+            # Kick off incremental summarizer in background using clean text
+            asyncio.ensure_future(
+                IncrementalSummarizer(self.job_id).process_transcript(clean)
+            )
+
+            report = await self._stage_extract(clean)
+            await self._stage_rag_index(clean, segments, report)
+            await self._stage_complete(clean, report)
         except Exception as exc:
             log.exception("pipeline failed job=%s", self.job_id)
             await self._mark_failed(str(exc))
@@ -204,21 +219,15 @@ class PipelineRunner:
     async def _stage_transcribe(self) -> tuple[str, list[dict]]:
         await self._update(PipelineEvent.TRANSCRIBING, 10, "Transcribing audio…")
 
-        # Run incremental summarizer in a background task while transcription runs
-        summarizer = IncrementalSummarizer(self.job_id)
-
         # CPU-heavy — offload to thread
         transcript, segments = await asyncio.to_thread(
             _transcribe_sync, self.audio_path, self._progress
         )
 
-        # Write plain-text transcript to disk
+        # Save raw timestamped transcript to disk for user download
         os.makedirs(os.path.dirname(self.txt_path), exist_ok=True)
         with open(self.txt_path, "w", encoding="utf-8") as f:
             f.write(f"# Transcript: {self.filename}\n\n{transcript}")
-
-        # Kick off incremental summary in background (non-blocking)
-        asyncio.ensure_future(summarizer.process_transcript(transcript))
 
         await self._update(PipelineEvent.TRANSCRIBING, 60, "Transcription complete")
         return transcript, segments
