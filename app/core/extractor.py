@@ -210,11 +210,22 @@ async def _call_ollama(prompt: str) -> str:
 
 # ── JSON parse + validation layer ─────────────────────────────────────────────
 
+def _strip_nulls(obj: object) -> object:
+    """Recursively remove null values so Pydantic uses field defaults instead of failing."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(i) for i in obj]
+    return obj
+
+
 def _parse_report(raw: str) -> MeetingReport:
     """
     Layer 1: strip markdown fences.
     Layer 2: extract outermost JSON object.
-    Layer 3: Pydantic validation.
+    Layer 3: strip nulls (LLM returns null for optional fields; Pydantic rejects
+             explicit null on non-Optional typed fields even when a default exists).
+    Layer 4: Pydantic validation.
     """
     raw = raw.strip()
     if raw.startswith("```"):
@@ -227,6 +238,7 @@ def _parse_report(raw: str) -> MeetingReport:
         raw = raw[start:end]
 
     data = json.loads(raw)
+    data = _strip_nulls(data)
     return MeetingReport.model_validate(data)
 
 
