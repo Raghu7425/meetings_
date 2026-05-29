@@ -52,11 +52,22 @@ async def process_meeting(call_id: str) -> None:
         meeting, created = await _get_or_create_meeting(call_id)
         meeting_uuid = str(meeting.id)
 
-        # ── 1. Fetch call record metadata ─────────────────────────────────
-        try:
-            record = await get_call_record(call_id)
-        except Exception as e:
-            raise RuntimeError(f"get_call_record failed: {e}") from e
+        # ── 1 & 2. Fetch call record + attendees in parallel ──────────────
+        record_result, attendees_result = await asyncio.gather(
+            get_call_record(call_id),
+            get_attendees(call_id),
+            return_exceptions=True,
+        )
+
+        if isinstance(record_result, Exception):
+            raise RuntimeError(f"get_call_record failed: {record_result}") from record_result
+        record = record_result
+
+        if isinstance(attendees_result, Exception):
+            log.warning(f"[processor] Could not fetch attendees: {attendees_result}")
+            attendees = []
+        else:
+            attendees = attendees_result
 
         # Extract title / date
         start_dt = record.get("startDateTime")
@@ -71,13 +82,6 @@ async def process_meeting(call_id: str) -> None:
         join_info = record.get("joinWebUrl", "")
         title = record.get("subject") or f"Meeting {dt.strftime('%Y-%m-%d %H:%M')}"
 
-        # ── 2. Get attendees ───────────────────────────────────────────────
-        try:
-            attendees = await get_attendees(call_id)
-        except Exception as e:
-            log.warning(f"[processor] Could not fetch attendees: {e}")
-            attendees = []
-
         # ── 3. Download recording ──────────────────────────────────────────
         try:
             download_url = await get_recording_download_url(call_id)
@@ -91,19 +95,24 @@ async def process_meeting(call_id: str) -> None:
             except Exception as e:
                 raise RuntimeError(f"download_recording failed: {e}") from e
 
-            # ── 4. Upload raw .mp4 to MinIO ────────────────────────────────
-            try:
-                audio_object = f"recordings/{call_id}/{call_id}.mp4"
-                audio_minio_url = await upload_file(mp4_path, audio_object)
-            except Exception as e:
-                log.warning(f"[processor] MinIO upload failed (non-fatal): {e}")
-                audio_minio_url = ""
+            # ── 4 & 5. Upload .mp4 to MinIO + Transcribe in parallel ───────
+            # Both only read mp4_path — safe to run concurrently
+            audio_object = f"recordings/{call_id}/{call_id}.mp4"
+            upload_result, transcribe_result = await asyncio.gather(
+                upload_file(mp4_path, audio_object),
+                transcribe(mp4_path),
+                return_exceptions=True,
+            )
 
-            # ── 5. Transcribe ──────────────────────────────────────────────
-            try:
-                segments, transcript_text = await transcribe(mp4_path)
-            except Exception as e:
-                raise RuntimeError(f"transcription failed: {e}") from e
+            if isinstance(upload_result, Exception):
+                log.warning(f"[processor] MinIO upload failed (non-fatal): {upload_result}")
+                audio_minio_url = ""
+            else:
+                audio_minio_url = upload_result
+
+            if isinstance(transcribe_result, Exception):
+                raise RuntimeError(f"transcription failed: {transcribe_result}") from transcribe_result
+            segments, transcript_text = transcribe_result
 
             # ── 6. Upload transcript to MinIO ──────────────────────────────
             txt_path = os.path.join(tmpdir, f"{call_id}.txt")
@@ -159,44 +168,48 @@ async def process_meeting(call_id: str) -> None:
 
         log.info(f"[processor] DB persisted for call_id={call_id}")
 
-        # ── 9. Send summary email ──────────────────────────────────────────
-        try:
-            await send_summary_email(
+        # ── 9, 10, 11. Email + reminders + Jira in parallel ──────────────
+        async def _jira_task():
+            from app.core.jira_client import create_tickets_for_action_items
+            return await create_tickets_for_action_items(
+                report.action_items,
+                meeting_title=title,
+                meeting_id=meeting_uuid,
+            )
+
+        post_tasks = [
+            send_summary_email(
                 to_addresses=attendees,
                 report=report,
                 meeting_title=title,
                 meeting_date=dt.strftime("%Y-%m-%d %H:%M UTC"),
-            )
-        except Exception as e:
-            log.error(f"[processor] Email send failed (non-fatal): {e}")
-
-        # ── 10. Schedule reminders ─────────────────────────────────────────
-        try:
-            schedule_reminders(report.action_items, meeting_title=title)
-        except Exception as e:
-            log.warning(f"[processor] Reminder scheduling failed (non-fatal): {e}")
-
-        # ── 11. Jira integration (optional) ───────────────────────────────
+            ),
+            asyncio.to_thread(schedule_reminders, report.action_items, meeting_title=title),
+        ]
         if JIRA_ENABLED:
-            try:
-                from app.core.jira_client import create_tickets_for_action_items
-                ticket_pairs = await create_tickets_for_action_items(
-                    report.action_items,
-                    meeting_title=title,
-                    meeting_id=meeting_uuid,
-                )
-                # Persist Jira ticket IDs
+            post_tasks.append(_jira_task())
+
+        post_results = await asyncio.gather(*post_tasks, return_exceptions=True)
+
+        if isinstance(post_results[0], Exception):
+            log.error(f"[processor] Email send failed (non-fatal): {post_results[0]}")
+        if isinstance(post_results[1], Exception):
+            log.warning(f"[processor] Reminder scheduling failed (non-fatal): {post_results[1]}")
+
+        if JIRA_ENABLED and len(post_results) > 2:
+            if isinstance(post_results[2], Exception):
+                log.error(f"[processor] Jira integration failed (non-fatal): {post_results[2]}")
+            else:
+                ticket_pairs = post_results[2]
                 async with AsyncSessionLocal() as session:
-                    result = await session.execute(
+                    db_result = await session.execute(
                         select(ActionItem).where(ActionItem.meeting_id == meeting.id)
                     )
-                    db_items = result.scalars().all()
+                    db_items = db_result.scalars().all()
                     for idx, ticket_key in ticket_pairs:
                         if idx < len(db_items):
                             db_items[idx].jira_ticket_id = ticket_key
                     await session.commit()
-            except Exception as e:
-                log.error(f"[processor] Jira integration failed (non-fatal): {e}")
 
         log.info(f"[processor] Pipeline complete for call_id={call_id}")
 

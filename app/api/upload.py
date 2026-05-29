@@ -30,6 +30,7 @@ WebSocket progress endpoint lives in ws_progress.py.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -275,34 +276,32 @@ async def delete_job(job_id: str):
     if not data:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    await store.delete(job_id)
-
-    # Remove transcript file
-    path = data.get("transcript_path", "")
-    if path and os.path.exists(path):
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-
-    # Remove knowledge-base file
+    path    = data.get("transcript_path", "")
     kb_path = os.path.join(MEETINGS_INPUT_DIR, f"{job_id}.txt")
-    if os.path.exists(kb_path):
-        try:
-            os.unlink(kb_path)
-        except OSError:
-            pass
 
-    # Remove Qdrant vectors
-    try:
+    async def _delete_qdrant():
         from app.core.vector_store.qdrant_store import get_qdrant_store
         qdrant = get_qdrant_store()
         if qdrant.available:
             await qdrant.delete_meeting(job_id)
-    except Exception as exc:
-        log.warning("qdrant delete failed job=%s: %s", job_id, exc)
 
-    # Invalidate voice agent index
+    def _delete_files():
+        for p in (path, kb_path):
+            if p and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+
+    # Redis delete, file deletes, and Qdrant delete all run in parallel
+    await asyncio.gather(
+        store.delete(job_id),
+        asyncio.to_thread(_delete_files),
+        _delete_qdrant(),
+        return_exceptions=True,
+    )
+
+    # Invalidate voice agent index (quick sync call)
     try:
         from app.core.agent import invalidate_agent_index
         invalidate_agent_index()

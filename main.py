@@ -173,18 +173,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         log.warning("model preload warning: %s", exc)
 
-    # Teams meeting pipeline (DB + MinIO + scheduler)
+    # Teams meeting pipeline (DB + MinIO + scheduler) — all three run in parallel
     if _MEETING_PIPELINE_AVAILABLE:
-        for label, coro in [
-            ("Alembic",    asyncio.to_thread(_run_alembic_upgrade)),
-            ("DB tables",  init_db()),
-            ("MinIO",      ensure_bucket()),
-        ]:
-            try:
-                await coro
+        results = await asyncio.gather(
+            asyncio.to_thread(_run_alembic_upgrade),
+            init_db(),
+            ensure_bucket(),
+            return_exceptions=True,
+        )
+        for label, result in zip(("Alembic", "DB tables", "MinIO"), results):
+            if isinstance(result, Exception):
+                log.warning("%s warning (non-fatal): %s", label, result)
+            else:
                 log.info("%s ready", label)
-            except Exception as exc:
-                log.warning("%s warning (non-fatal): %s", label, exc)
         try:
             start_scheduler()
         except Exception as exc:

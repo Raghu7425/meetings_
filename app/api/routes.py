@@ -12,6 +12,7 @@ This file is the main connection between frontend requests and backend logic.
 """
 
 
+import asyncio
 import logging
 import httpx
 from fastapi import APIRouter
@@ -46,26 +47,20 @@ async def health():
         from app.db.database import check_db_health
         from app.core.storage import check_minio_health
 
-        db_ok    = False
-        minio_ok = False
-        ollama_ok = False
-
-        try:
-            db_ok = await check_db_health()
-        except Exception:
-            pass
-
-        try:
-            minio_ok = await check_minio_health()
-        except Exception:
-            pass
-
-        try:
+        async def _check_ollama() -> bool:
             async with httpx.AsyncClient(timeout=5) as client:
                 r = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
-                ollama_ok = r.status_code == 200
-        except Exception:
-            pass
+                return r.status_code == 200
+
+        results = await asyncio.gather(
+            check_db_health(),
+            check_minio_health(),
+            _check_ollama(),
+            return_exceptions=True,
+        )
+        db_ok     = results[0] is True
+        minio_ok  = results[1] is True
+        ollama_ok = results[2] is True
 
         overall = "ok" if all([db_ok, minio_ok, ollama_ok]) else "degraded"
 

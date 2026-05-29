@@ -239,17 +239,20 @@ class PipelineRunner:
         r = await get_redis()
         store = RedisJobStore(r)
         import json as _json
-        await store.update(
-            self.job_id,
-            status=PipelineEvent.DONE.value,
-            progress="100",
-            summary=report.summary.short_summary or report.summary.detailed_summary,
-            structured_data=_json.dumps(report.model_dump()),
-            transcript_path=self.txt_path,
-        )
 
-        # Persist knowledge-base file for voice agent RAG
-        await asyncio.to_thread(self._write_knowledge_base, transcript, report)
+        # Redis update and knowledge-base file write run in parallel
+        await asyncio.gather(
+            store.update(
+                self.job_id,
+                status=PipelineEvent.DONE.value,
+                progress="100",
+                summary=report.summary.short_summary or report.summary.detailed_summary,
+                structured_data=_json.dumps(report.model_dump()),
+                transcript_path=self.txt_path,
+            ),
+            asyncio.to_thread(self._write_knowledge_base, transcript, report),
+            return_exceptions=True,
+        )
 
         # Signal voice agent to rebuild index
         try:
