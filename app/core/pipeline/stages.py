@@ -44,7 +44,8 @@ from app.config import (
     UPLOADS_DIR,
     SUMMARIZER_CHUNK_LINES,
 )
-from app.core.extractor import extract_insights, MeetingReport
+from app.core.extractor import extract_insights, extract_insights_hybrid, MeetingReport
+from app.core.nlp_engine import run_nlp_pipeline
 from app.core.pipeline.event_bus import PipelineEvent, publish_event
 from app.core.summarizer import IncrementalSummarizer
 from app.core.transcript_cleaner import clean_transcript
@@ -191,7 +192,8 @@ class PipelineRunner:
                 IncrementalSummarizer(self.job_id).process_transcript(clean)
             )
 
-            report = await self._stage_extract(clean)
+            knowledge = await self._stage_nlp(clean, segments)
+            report    = await self._stage_extract(clean, segments, knowledge)
             await self._stage_rag_index(clean, segments, report)
             await self._stage_complete(clean, report)
         except Exception as exc:
@@ -232,9 +234,35 @@ class PipelineRunner:
         await self._update(PipelineEvent.TRANSCRIBING, 60, "Transcription complete")
         return transcript, segments
 
-    async def _stage_extract(self, transcript: str) -> MeetingReport:
-        await self._update(PipelineEvent.SUMMARIZING, 65, "Extracting meeting intelligence…")
-        report = await extract_insights(transcript)
+    async def _stage_nlp(self, transcript: str, segments: list[dict]) -> "StructuredKnowledge":  # type: ignore[name-defined]
+        from app.core.structured_knowledge import StructuredKnowledge
+        await self._update(PipelineEvent.SUMMARIZING, 63, "NLP pre-processing…")
+        try:
+            knowledge = await run_nlp_pipeline(segments, self.job_id, transcript)
+            log.info(
+                "nlp complete job=%s tasks=%d decisions=%d risks=%d entities_people=%d",
+                self.job_id,
+                len(knowledge.candidate_tasks),
+                len(knowledge.candidate_decisions),
+                len(knowledge.risks),
+                len(knowledge.entities.people),
+            )
+            return knowledge
+        except Exception as exc:
+            log.warning("NLP pipeline failed (%s) — returning empty knowledge", exc)
+            return StructuredKnowledge(job_id=self.job_id)
+
+    async def _stage_extract(
+        self,
+        transcript: str,
+        segments: list[dict],
+        knowledge: "StructuredKnowledge | None" = None,  # type: ignore[name-defined]
+    ) -> MeetingReport:
+        await self._update(PipelineEvent.SUMMARIZING, 65, "LLM synthesis…")
+        if knowledge is not None and knowledge.total_utterances > 0:
+            report = await extract_insights_hybrid(transcript, knowledge)
+        else:
+            report = await extract_insights(transcript)
         await self._update(PipelineEvent.SUMMARIZING, 80, "Insights extracted")
         return report
 

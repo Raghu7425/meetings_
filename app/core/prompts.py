@@ -92,6 +92,46 @@ Transcript:
 JSON:"""
 
 
+INSIGHT_SYNTHESIS_PROMPT = """You are a senior executive assistant generating insights from pre-analyzed meeting data.
+Return ONLY valid JSON — no markdown, no explanation, no text outside the JSON object.
+
+The NLP pipeline has already extracted participants, topics, tasks, decisions, risks, entities, and sentiment.
+Your job is ONLY to:
+1. Write an executive summary narrative (2-3 sentences + detailed paragraph)
+2. Identify strategic insights not obvious from raw data
+3. Infer meeting title from topics
+4. Suggest next steps and recommendations
+5. Add missing context to the top action items and decisions
+
+DO NOT re-list what is already in the structured data. Focus on synthesis, not extraction.
+
+Structured Meeting Data:
+{structured_context}
+
+Return JSON:
+{{
+  "meeting_metadata": {{
+    "meeting_title": "<inferred title based on topics>",
+    "duration_minutes": <int>,
+    "platform": "<Teams|Zoom|Google Meet|Phone|Unknown>",
+    "language": "en",
+    "transcript_confidence": 0.85
+  }},
+  "summary": {{
+    "short_summary": "<2-3 sentence executive summary covering key outcomes>",
+    "detailed_summary": "<4-6 sentence strategic narrative: what was discussed, what was decided, what risks exist, what happens next>"
+  }},
+  "open_questions": ["<unresolved question that needs follow-up>"],
+  "tags": ["<relevant tag>"],
+  "next_meeting": {{
+    "date": "<YYYY-MM-DD or null>",
+    "agenda": ["<suggested agenda item based on open questions and risks>"]
+  }}
+}}
+
+JSON:"""
+
+
 SYSTEM_PROMPT = """You are a meeting assistant that answers questions based on meeting transcripts and summaries.
 
 Conversation History:

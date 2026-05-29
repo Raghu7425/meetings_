@@ -1,6 +1,16 @@
 # ── Teams Meeting Assistant — Additional Requirements ─────────────────────────
 # Install alongside existing requirements.txt:
 #   pip install -r requirements.txt -r requirements_meeting.txt
+#
+# After install, download models:
+#   python -m spacy download en_core_web_sm
+#   python -c "import nltk; nltk.download('vader_lexicon'); nltk.download('stopwords')"
+
+# ── NLP pre-processing (no-LLM extraction) ─────────────────────────────────────
+spacy>=3.7.0             # NER: PERSON, ORG, GPE, DATE — en_core_web_sm model
+nltk>=3.8.0              # VADER sentiment + stopwords
+rake-nltk>=1.0.6         # RAKE keyword extraction (pure algorithm, no model)
+dateparser>=1.2.0        # Relative date parsing: "next Friday", "end of month"
 
 # Transcription with speaker diarization
 whisperx>=3.1.0          # recommended — wraps faster-whisper + alignment + diarization
