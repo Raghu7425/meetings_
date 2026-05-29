@@ -30,6 +30,12 @@ httpx>=0.27.0
 # (uses httpx — no extra SDK needed; msal can be added for advanced scenarios)
 # msal>=1.28.0
 
+# Redis (async client — redis.asyncio)
+redis>=5.0.0
+
+# Qdrant vector database client
+qdrant-client>=1.9.0
+
 # Misc
 python-multipart>=0.0.9   # for form data in FastAPI (already pulled by uvicorn in some installs)
 python-dotenv>=1.0.0      # env var loading
