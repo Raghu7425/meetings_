@@ -50,6 +50,16 @@ RUN pip install --no-cache-dir \
 
 RUN pip install --no-cache-dir -r requirements.txt -r requirements_meeting.txt
 
+# ── NLP model downloads (baked into image — no runtime download needed) ────────
+# spaCy: en_core_web_sm for NER (people, orgs, dates) — ~12 MB
+# NLTK : vader_lexicon for sentiment analysis          — ~2 MB
+RUN python -m spacy download en_core_web_sm \
+    && python -c "\
+import nltk; \
+nltk.download('vader_lexicon', quiet=True); \
+nltk.download('stopwords', quiet=True); \
+print('NLTK data downloaded')"
+
 # ── App code ──────────────────────────────────────────────────────────────────
 COPY . .
 

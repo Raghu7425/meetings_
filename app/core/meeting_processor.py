@@ -10,7 +10,8 @@ from app.db.database import AsyncSessionLocal
 from app.db.models import Meeting, ActionItem
 from app.core.graph_client import get_recording_download_url, download_recording, get_attendees, get_call_record
 from app.core.transcriber import transcribe
-from app.core.extractor import extract_insights
+from app.core.extractor import extract_insights, extract_insights_hybrid
+from app.core.nlp_engine import run_nlp_pipeline
 from app.core.transcript_cleaner import clean_transcript
 from app.core.storage import upload_file
 from app.core.notifier import send_summary_email, send_failure_email
@@ -134,7 +135,8 @@ async def process_meeting(call_id: str) -> None:
             call_id, len(transcript_text), len(clean_text),
         )
         try:
-            report = await extract_insights(clean_text)
+            knowledge = await run_nlp_pipeline(segments, call_id, clean_text)
+            report = await extract_insights_hybrid(clean_text, knowledge)
         except Exception as e:
             raise RuntimeError(f"extract_insights failed: {e}") from e
 

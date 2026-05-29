@@ -266,7 +266,7 @@ Success "Infrastructure services are running."
 # Step 4 - Build app and run migrations
 # ------------------------------------------------------------------------------
 
-Info "Step 4/5 - Building app image..."
+Info "Step 4/5 - Building app image (includes NLP model downloads: spaCy + NLTK)..."
 
 docker compose build app
 
@@ -344,11 +344,14 @@ Write-Host ""
 Write-Host " App URL      : http://localhost:8000" -ForegroundColor White
 Write-Host " MinIO UI     : http://localhost:9001" -ForegroundColor White
 Write-Host " Ollama API   : http://meeting_ollama:11434" -ForegroundColor White
+Write-Host " Qdrant UI    : http://localhost:6333/dashboard" -ForegroundColor White
 Write-Host ""
 
+Write-Host " NLP Engine   : spaCy en_core_web_sm + NLTK VADER (baked into image)" -ForegroundColor DarkGray
 Write-Host " MinIO Login  : admin / minioadmin" -ForegroundColor DarkGray
 Write-Host " Stop Stack   : docker compose down" -ForegroundColor DarkGray
 Write-Host " View Logs    : docker compose logs -f app" -ForegroundColor DarkGray
+Write-Host " Rebuild      : docker compose build --no-cache app" -ForegroundColor DarkGray
 Write-Host ""
 
 docker compose up -d app
