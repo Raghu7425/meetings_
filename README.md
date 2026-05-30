@@ -1,4 +1,4 @@
-# Technodysis AI voice assistant
+# AI voice assistant
 
 Real-time conversational AI voice assistant — sub-200ms perceived latency, full barge-in interrupt support, pause-triggered backchannelling, and a production-ready WebSocket server.
 
